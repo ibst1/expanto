@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.1 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.2 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -910,7 +910,7 @@ OnWebMessageReceived(sender, args) {
         }
 
     } else if (action = "firstRunSetup") {
-        global g_firstRun, g_dictPaths
+        global g_firstRun
         ; Register phrase folder
         phraseFolder := msg.Has("phraseFolder") ? msg["phraseFolder"] : ""
         if (phraseFolder != "") {
@@ -920,24 +920,12 @@ OnWebMessageReceived(sender, args) {
             if (IniRead(inifile, "PhraseFolders", folderId, "") = "")
                 IniWrite(phraseFolder, inifile, "PhraseFolders", folderId)
         }
-        ; Register selected word list files
-        selectedFiles := msg.Has("wordlistFiles") ? msg["wordlistFiles"] : []
-        if (selectedFiles.Length > 0) {
-            for relPath in selectedFiles {
-                absPath := A_ScriptDir "\" StrReplace(relPath, "/", "\")
-                if (FileExist(absPath) && !_ArrayContains(g_dictPaths, absPath))
-                    g_dictPaths.Push(absPath)
-            }
-            SaveDictSettings()
-            IniWrite(1, inifile, "Spellcheck", "enabled")
-            ApplyDictionaries()
-        }
         IniWrite("done", inifile, "meta", "first_run")
         g_firstRun := false
-        ReloadPhrases()
-        _SafeSend(sender, "window.closeFirstRun()")
-        _SafeSend(wv2Core, "window.receiveFiles(" BuildFilesJson() ")")
-        _SafeSend(wv2Core, "window.receiveDictSettings(" BuildDictSettingsJson() ")")
+        ; Selected word lists may need downloading (the release zip ships
+        ; without them) — finish deferred so the message pump stays alive
+        selectedFiles := msg.Has("wordlistFiles") ? msg["wordlistFiles"] : []
+        SetTimer(_FirstRunFinish.Bind(selectedFiles, sender), -1)
 
     } else if (action = "browsePhraseFolder") {
         chosen := DirSelect("*" A_AppData "\Expanto", 1, "Välj mapp för frasfiler")
@@ -1521,6 +1509,42 @@ LoadDictSettings() {
 SaveDictSettings() {
     global inifile, g_dictPaths
     IniWrite(ArrJoin(g_dictPaths, "|"), inifile, "Spellcheck", "dictionaries")
+}
+
+; First-run: download any selected word lists that aren't on disk yet (the
+; base lists live under general/ in the wordlists repo), register them as
+; dictionaries and finish the setup.
+_FirstRunFinish(selectedFiles, sender) {
+    global g_dictPaths, inifile, wv2Core
+    if (selectedFiles.Length > 0) {
+        baseUrl := "https://raw.githubusercontent.com/ibst1/wordlists/master/general/"
+        failed  := []
+        for relPath in selectedFiles {
+            absPath := A_ScriptDir "\" StrReplace(relPath, "/", "\")
+            if !FileExist(absPath) {
+                SplitPath(absPath, &fname, &fdir)
+                if !DirExist(fdir)
+                    try DirCreate(fdir)
+                try {
+                    Download(baseUrl fname, absPath)
+                } catch {
+                    failed.Push(fname)
+                    continue
+                }
+            }
+            if (FileExist(absPath) && !_ArrayContains(g_dictPaths, absPath))
+                g_dictPaths.Push(absPath)
+        }
+        SaveDictSettings()
+        IniWrite(1, inifile, "Spellcheck", "enabled")
+        ApplyDictionaries()
+        if (failed.Length > 0)
+            MsgBox "Följande ordlistor kunde inte laddas ner:`n" ArrJoin(failed, "`n"), "Nedladdning — fel", "Icon!"
+    }
+    ReloadPhrases()
+    _SafeSend(sender, "window.closeFirstRun()")
+    _SafeSend(wv2Core, "window.receiveFiles(" BuildFilesJson() ")")
+    _SafeSend(wv2Core, "window.receiveDictSettings(" BuildDictSettingsJson() ")")
 }
 
 _DoWordlistDownload(files, folder, sender) {
