@@ -30,6 +30,7 @@ const LANG = {
     'btn.saveReload': 'Spara & ladda om',
     'help.title': 'Hjälp',
     // — Frasmappar —
+    'fr.more': 'Fler ordlistor från wordlists-repot',
     'folders.desc': 'Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.',
     'folders.add': '＋ Lägg till mapp',
     'folders.delTip': 'Ta bort mapp',
@@ -415,6 +416,7 @@ const LANG = {
     'btn.saveReload': 'Save & reload',
     'help.title': 'Help',
     // — Phrase folders —
+    'fr.more': 'More word lists from the wordlists repo',
     'folders.desc': 'All .ahk and .enc files in the selected folders are loaded as phrase files.',
     'folders.add': '＋ Add folder',
     'folders.delTip': 'Remove folder',
@@ -1689,7 +1691,8 @@ window.receiveEncStatus = function(data) {
 window.showFirstRun = function(data) {
   const bundles = data.bundles || [];
   const defaultFolder = data.defaultFolder || '';
-  document.getElementById('frBundles').innerHTML = bundles.map(b =>
+  const box = document.getElementById('frBundles');
+  box.innerHTML = bundles.map(b =>
     `<label class="fr-bundle-row">
       <input type="checkbox" class="fr-bundle-chk" data-files="${escHtml(b.files)}" ${b.isDefault ? 'checked' : ''}>
       <span>${escHtml(b.label)}</span>
@@ -1697,6 +1700,28 @@ window.showFirstRun = function(data) {
   ).join('');
   document.getElementById('frFolderPath').value = defaultFolder;
   document.getElementById('firstRunModal').classList.remove('hidden');
+  // The ini bundles are just the curated defaults — list every other .txt in
+  // the wordlists repo too, fetched live (silently skipped when offline)
+  const covered = new Set(bundles.flatMap(b => String(b.files || '').split('|').map(s => s.trim()).filter(Boolean)));
+  fetch('https://api.github.com/repos/ibst1/wordlists/git/trees/HEAD?recursive=1')
+    .then(r => r.json())
+    .then(j => {
+      const extra = (j.tree || []).map(t => t.path)
+        .filter(p => p.endsWith('.txt') && !covered.has(p)).sort();
+      if (!extra.length) return;
+      const hdr = document.createElement('div');
+      hdr.className = 'fr-section-label';
+      hdr.style.marginTop = '8px';
+      hdr.textContent = T('fr.more');
+      box.appendChild(hdr);
+      extra.forEach(p => {
+        const row = document.createElement('label');
+        row.className = 'fr-bundle-row';
+        row.innerHTML = `<input type="checkbox" class="fr-bundle-chk" data-files="${escHtml(p)}"> <span>${escHtml(p.replace(/\.txt$/, ''))}</span>`;
+        box.appendChild(row);
+      });
+    })
+    .catch(() => {});
 };
 
 window.receiveFirstRunFolder = function(path) {
