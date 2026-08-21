@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.0 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.1 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -20,6 +20,10 @@ try
 
 ; ── Core globals (matching the legacy native build) ──────────────────────────
 global inifile  := A_AppData "\Expanto\settings.ini"
+; Fresh machine: the settings folder must exist before any IniWrite (IniWrite
+; cannot create directories — first run failed on "Hoppa över" without this)
+if !DirExist(A_AppData "\Expanto")
+    try DirCreate(A_AppData "\Expanto")
 global g_ColCol := Chr(58) . Chr(58)
 global g_Semi   := Chr(59)
 
