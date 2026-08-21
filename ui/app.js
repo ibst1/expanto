@@ -31,6 +31,17 @@ const LANG = {
     'help.title': 'Hjälp',
     // — Frasmappar —
     'fr.more': 'Fler ordlistor från wordlists-repot',
+    'fr.packs': 'Fraspaket att börja med (valfritt)',
+    'packs.title': 'Ladda ner fraspaket',
+    'packs.desc': 'Färdiga fraspaket från ahk-phrases-repot. Valda paket laddas ner och läggs automatiskt till som frasmappar.',
+    'packs.none': 'Inga fraspaket hittades.',
+    'packs.files': n => `${n} fil${n === 1 ? '' : 'er'}`,
+    'packs.downloading': 'Laddar ner…',
+    'packs.done': 'Klart — paketen har laddats ner och lagts till som frasmappar.',
+    'packs.someFailed': n => `Klart, men ${n} fil(er) kunde inte laddas ner.`,
+    'wl.fetching': 'Hämtar lista från GitHub…',
+    'wl.none': 'Inga ordlistor hittades.',
+    'wl.fetchErr': m => `Kunde inte hämta lista: ${m}`,
     'folders.desc': 'Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.',
     'folders.add': '＋ Lägg till mapp',
     'folders.delTip': 'Ta bort mapp',
@@ -417,6 +428,17 @@ const LANG = {
     'help.title': 'Help',
     // — Phrase folders —
     'fr.more': 'More word lists from the wordlists repo',
+    'fr.packs': 'Starter phrase packs (optional)',
+    'packs.title': 'Download phrase packs',
+    'packs.desc': 'Ready-made phrase packs from the ahk-phrases repo. Selected packs are downloaded and added as phrase folders automatically.',
+    'packs.none': 'No phrase packs found.',
+    'packs.files': n => `${n} file${n === 1 ? '' : 's'}`,
+    'packs.downloading': 'Downloading…',
+    'packs.done': 'Done — the packs were downloaded and added as phrase folders.',
+    'packs.someFailed': n => `Done, but ${n} file(s) could not be downloaded.`,
+    'wl.fetching': 'Fetching list from GitHub…',
+    'wl.none': 'No word lists found.',
+    'wl.fetchErr': m => `Could not fetch list: ${m}`,
     'folders.desc': 'All .ahk and .enc files in the selected folders are loaded as phrase files.',
     'folders.add': '＋ Add folder',
     'folders.delTip': 'Remove folder',
@@ -1101,6 +1123,7 @@ const BULK_AK_FIELDS   = new Set(['bCat','bTagInput','bLang','bComment','bFile']
 let g_fieldKeys = { ...FIELD_AK_DEFAULTS };
 let g_wordlistDlFolder    = '';
 let g_wordlistIndexLoaded = false;
+let g_packIndexLoaded = false;
 try {
   const saved = JSON.parse(localStorage.getItem('expanto_field_keys') || '{}');
   Object.assign(g_fieldKeys, saved);
@@ -1722,6 +1745,26 @@ window.showFirstRun = function(data) {
       });
     })
     .catch(() => {});
+  // Starter phrase packs from the ahk-phrases repo (also skipped when offline)
+  fetch('https://api.github.com/repos/ibst1/ahk-phrases/git/trees/HEAD?recursive=1')
+    .then(r => r.json())
+    .then(j => {
+      const packs = _groupPhrasePacks(j.tree || []);
+      if (!packs.length) return;
+      const hdr = document.createElement('div');
+      hdr.className = 'fr-section-label';
+      hdr.style.marginTop = '8px';
+      hdr.textContent = T('fr.packs');
+      box.appendChild(hdr);
+      packs.forEach(p => {
+        const row = document.createElement('label');
+        row.className = 'fr-bundle-row';
+        row.innerHTML = `<input type="checkbox" class="fr-pack-chk" data-pack="${escHtml(p.name)}"`
+          + ` data-files="${escHtml(p.files.join('|'))}"> <span>${escHtml(p.name)} (${escHtml(T('packs.files', p.files.length))})</span>`;
+        box.appendChild(row);
+      });
+    })
+    .catch(() => {});
 };
 
 window.receiveFirstRunFolder = function(path) {
@@ -2330,16 +2373,28 @@ function bindUI() {
     g_wordlistIndexLoaded = false;
     loadWordlistIndex(true);
   });
+  document.getElementById('btnDownloadPhrasePacks')?.addEventListener('click', () => {
+    const packs = [...document.querySelectorAll('#phrasePackIndex .pk-chk:checked')].map(c => ({
+      name: c.dataset.pack, files: c.dataset.files.split('|').filter(Boolean),
+    }));
+    if (!packs.length) return;
+    document.getElementById('phrasePackStatus').textContent = T('packs.downloading');
+    postToAhk({ action: 'downloadPhrasePacks', packs });
+  });
+  document.getElementById('btnRefreshPhrasePacks')?.addEventListener('click', () => loadPhrasePackIndex(true));
   document.getElementById('btnFirstRunStart').addEventListener('click', () => {
     const allFiles = [];
     document.querySelectorAll('.fr-bundle-chk:checked').forEach(chk => {
       chk.dataset.files.split('|').filter(Boolean).forEach(f => allFiles.push(f));
     });
+    const phrasePacks = [...document.querySelectorAll('.fr-pack-chk:checked')].map(c => ({
+      name: c.dataset.pack, files: c.dataset.files.split('|').filter(Boolean),
+    }));
     const folder = document.getElementById('frFolderPath').value.trim();
-    postToAhk({ action: 'firstRunSetup', wordlistFiles: allFiles, phraseFolder: folder });
+    postToAhk({ action: 'firstRunSetup', wordlistFiles: allFiles, phrasePacks, phraseFolder: folder });
   });
   document.getElementById('btnFirstRunSkip').addEventListener('click', () => {
-    postToAhk({ action: 'firstRunSetup', wordlistFiles: [], phraseFolder: '' });
+    postToAhk({ action: 'firstRunSetup', wordlistFiles: [], phrasePacks: [], phraseFolder: '' });
   });
   document.getElementById('btnFirstRunBrowse').addEventListener('click', () => {
     postToAhk({ action: 'browsePhraseFolder' });
@@ -2552,6 +2607,7 @@ function showSettingsPage(page) {
   const targetId = pageIds[page];
   if (targetId) document.getElementById(targetId).classList.remove('hidden');
   if (page === 'spell') loadWordlistIndex();
+  if (page === 'folders') loadPhrasePackIndex();
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -2864,19 +2920,67 @@ async function loadWordlistIndex(force) {
   if (g_wordlistIndexLoaded && !force) return;
   const el = document.getElementById('wordlistIndex');
   if (!el) return;
-  el.innerHTML = '<div class="wl-msg">Hämtar lista från GitHub…</div>';
+  el.innerHTML = `<div class="wl-msg">${escHtml(T('wl.fetching'))}</div>`;
   try {
     const r = await fetch('https://api.github.com/repos/ibst1/wordlists/git/trees/HEAD?recursive=1');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const files = (data.tree || []).filter(f => f.type === 'blob' && f.path.endsWith('.txt'));
-    if (!files.length) { el.innerHTML = '<div class="wl-msg">Inga ordlistor hittades.</div>'; return; }
+    if (!files.length) { el.innerHTML = `<div class="wl-msg">${escHtml(T('wl.none'))}</div>`; return; }
     renderWordlistIndex(files);
     g_wordlistIndexLoaded = true;
   } catch(e) {
-    el.innerHTML = `<div class="wl-msg wl-err">Kunde inte hämta lista: ${escHtml(e.message)}</div>`;
+    el.innerHTML = `<div class="wl-msg wl-err">${escHtml(T('wl.fetchErr', e.message))}</div>`;
   }
 }
+
+// ── Phrase-pack downloader (Settings → Phrase folders) ────────────────────────
+// Packs = top-level folders of .ahk files in the ahk-phrases repo.
+function _groupPhrasePacks(tree) {
+  const groups = {};
+  for (const f of tree) {
+    if (f.type !== 'blob' || !f.path.endsWith('.ahk') || !f.path.includes('/')) continue;
+    const name = f.path.split('/')[0];
+    (groups[name] = groups[name] || { name, files: [], size: 0 }).files.push(f.path);
+    groups[name].size += f.size || 0;
+  }
+  return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function _updatePackBtn() {
+  const btn = document.getElementById('btnDownloadPhrasePacks');
+  if (btn) btn.disabled = !document.querySelector('#phrasePackIndex .pk-chk:checked');
+}
+
+async function loadPhrasePackIndex(force) {
+  if (g_packIndexLoaded && !force) return;
+  const el = document.getElementById('phrasePackIndex');
+  if (!el) return;
+  el.innerHTML = `<div class="wl-msg">${escHtml(T('wl.fetching'))}</div>`;
+  try {
+    const r = await fetch('https://api.github.com/repos/ibst1/ahk-phrases/git/trees/HEAD?recursive=1');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const packs = _groupPhrasePacks(data.tree || []);
+    if (!packs.length) { el.innerHTML = `<div class="wl-msg">${escHtml(T('packs.none'))}</div>`; return; }
+    el.innerHTML = packs.map(p => {
+      const kb = Math.round(p.size / 1024);
+      return `<div class="wl-file-row"><label><input type="checkbox" class="pk-chk"`
+        + ` data-pack="${escHtml(p.name)}" data-files="${escHtml(p.files.join('|'))}">`
+        + ` <strong>${escHtml(p.name)}</strong> <span class="wl-size">(${escHtml(T('packs.files', p.files.length))}, ${kb} KB)</span></label></div>`;
+    }).join('');
+    el.querySelectorAll('.pk-chk').forEach(c => c.addEventListener('change', _updatePackBtn));
+    _updatePackBtn();
+    g_packIndexLoaded = true;
+  } catch(e) {
+    el.innerHTML = `<div class="wl-msg wl-err">${escHtml(T('wl.fetchErr', e.message))}</div>`;
+  }
+}
+
+window.phrasePackDone = function(d) {
+  const st = document.getElementById('phrasePackStatus');
+  if (st) st.textContent = d && d.failed ? T('packs.someFailed', d.failed) : T('packs.done');
+};
 
 function renderWordlistIndex(files) {
   const el = document.getElementById('wordlistIndex');
