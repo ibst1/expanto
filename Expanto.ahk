@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.2 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.3 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -1511,24 +1511,24 @@ SaveDictSettings() {
     IniWrite(ArrJoin(g_dictPaths, "|"), inifile, "Spellcheck", "dictionaries")
 }
 
-; First-run: download any selected word lists that aren't on disk yet (the
-; base lists live under general/ in the wordlists repo), register them as
-; dictionaries and finish the setup.
+; First-run: download any selected word lists that aren't on disk yet.
+; selectedFiles holds wordlists-repo-relative paths (e.g. general/words_sv.txt
+; or medicin/mesh_sv.txt); every file lands flat in lib\words\.
 _FirstRunFinish(selectedFiles, sender) {
     global g_dictPaths, inifile, wv2Core
     if (selectedFiles.Length > 0) {
-        baseUrl := "https://raw.githubusercontent.com/ibst1/wordlists/master/general/"
+        baseUrl := "https://raw.githubusercontent.com/ibst1/wordlists/master/"
         failed  := []
         for relPath in selectedFiles {
-            absPath := A_ScriptDir "\" StrReplace(relPath, "/", "\")
+            SplitPath(StrReplace(relPath, "/", "\"), &fname)
+            absPath := A_ScriptDir "\lib\words\" fname
             if !FileExist(absPath) {
-                SplitPath(absPath, &fname, &fdir)
-                if !DirExist(fdir)
-                    try DirCreate(fdir)
+                if !DirExist(A_ScriptDir "\lib\words")
+                    try DirCreate(A_ScriptDir "\lib\words")
                 try {
-                    Download(baseUrl fname, absPath)
+                    Download(baseUrl relPath, absPath)
                 } catch {
-                    failed.Push(fname)
+                    failed.Push(relPath)
                     continue
                 }
             }
@@ -1648,31 +1648,6 @@ _ArrayContains(arr, val) {
         if (v = val)
             return true
     return false
-}
-
-_GetAllBundleAbsPaths() {
-    result := []
-    for b in LoadRepoBundles()
-        for f in StrSplit(b["files"], "|")
-            if ((f := Trim(f)) != "")
-                result.Push(A_ScriptDir "\" StrReplace(f, "/", "\"))
-    return result
-}
-
-BuildRepoBundlesJson() {
-    global g_dictPaths
-    bundles := LoadRepoBundles()
-    for b in bundles {
-        files := StrSplit(b["files"], "|")
-        active := true
-        for f in files {
-            absPath := A_ScriptDir "\" StrReplace(Trim(f), "/", "\")
-            if !_ArrayContains(g_dictPaths, absPath)
-                active := false
-        }
-        b["active"] := (files.Length > 0 && active)
-    }
-    return JSON.Dump(bundles)
 }
 
 ; ── Hotkey settings ────────────────────────────────────────────────────────────
