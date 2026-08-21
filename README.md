@@ -588,18 +588,11 @@ UI appearance settings (theme, language, font size, layout, list preferences) ar
 
 ## Optional content packs
 
-### Autocorrection (optional download)
+### Phrase packs (optional download)
 
-Phrase files with common misspellings (`autocorrect_en.ahk`, ~4 090 entries from Wikipedia's *Lists of common misspellings*, and `autocorrect_sv.ahk`; CC BY-SA 4.0) are available at [ibst1/autocorrect](https://github.com/ibst1/autocorrect). Clone or download, then add the folder as a phrase folder to enable autocorrection.
+Ready-made phrase packs live in [ibst1/ahk-phrases](https://github.com/ibst1/ahk-phrases): autocorrection for English and Swedish (Wikipedia-derived, CC BY-SA 4.0), e-mail building blocks, date expressions, code snippets, special characters and generic clinical-note example templates.
 
-### Phrase example packs (optional download)
-
-Ready-made example phrases to start from:
-
-- [ibst1/frasexempel](https://github.com/ibst1/frasexempel) — general packs (Swedish): e-mail building blocks, date expressions, code snippets, special characters.
-- [ibst1/journalfrasexempel](https://github.com/ibst1/journalfrasexempel) — generic Swedish clinical-note templates (example content only, no real data).
-
-Clone or download a repo and add the folder — or just the subfolders you want — under **Settings → Phrase folders**.
+Expanto offers these at **first run** and under **Settings → Phrase folders → Download phrase packs** — selected packs are downloaded to `%APPDATA%\Expanto\packs\` and registered as phrase folders automatically. You can also clone the repo and add any folder manually.
 
 ### Word lists — `lib\words\` (optional download)
 

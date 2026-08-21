@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.3 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.4 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -798,6 +798,11 @@ OnWebMessageReceived(sender, args) {
         if (files.Length > 0 && folder != "")
             SetTimer(_DoWordlistDownload.Bind(files, folder, sender), -1)
 
+    } else if (action = "downloadPhrasePacks") {
+        packs := msg.Has("packs") ? msg["packs"] : []
+        if (IsObject(packs) && packs.Length > 0)
+            SetTimer(_DoPhrasePackDownload.Bind(packs, sender), -1)
+
     } else if (action = "saveDictSettings") {
         raw := msg.Has("paths") ? msg["paths"] : ""
         g_dictPaths := []
@@ -922,10 +927,12 @@ OnWebMessageReceived(sender, args) {
         }
         IniWrite("done", inifile, "meta", "first_run")
         g_firstRun := false
-        ; Selected word lists may need downloading (the release zip ships
-        ; without them) — finish deferred so the message pump stays alive
+        ; Selected word lists and phrase packs may need downloading (the
+        ; release zip ships without them) — finish deferred so the message
+        ; pump stays alive
         selectedFiles := msg.Has("wordlistFiles") ? msg["wordlistFiles"] : []
-        SetTimer(_FirstRunFinish.Bind(selectedFiles, sender), -1)
+        packs         := msg.Has("phrasePacks")   ? msg["phrasePacks"]   : []
+        SetTimer(_FirstRunFinish.Bind(selectedFiles, packs, sender), -1)
 
     } else if (action = "browsePhraseFolder") {
         chosen := DirSelect("*" A_AppData "\Expanto", 1, "Välj mapp för frasfiler")
@@ -1511,10 +1518,61 @@ SaveDictSettings() {
     IniWrite(ArrJoin(g_dictPaths, "|"), inifile, "Spellcheck", "dictionaries")
 }
 
+; Download phrase packs from the ahk-phrases repo into %APPDATA%\Expanto\packs\
+; and register each pack folder as a phrase folder. packs = array of
+; Map("name", <top folder>, "files", [repo-relative .ahk paths]). Returns an
+; array of files that failed to download.
+_PhrasePackDownloadCore(packs) {
+    global inifile
+    baseUrl := "https://raw.githubusercontent.com/ibst1/ahk-phrases/main/"
+    failed  := []
+    for pack in packs {
+        name  := pack.Has("name")  ? pack["name"]  : ""
+        files := pack.Has("files") ? pack["files"] : []
+        if (name = "" || !IsObject(files) || !files.Length)
+            continue
+        destDir := A_AppData "\Expanto\packs\" name
+        if !DirExist(destDir)
+            try DirCreate(destDir)
+        okAny := false
+        for relPath in files {
+            SplitPath(StrReplace(relPath, "/", "\"), &fname)
+            dest := destDir "\" fname
+            if FileExist(dest) {
+                okAny := true
+                continue
+            }
+            try {
+                Download(baseUrl relPath, dest)
+                okAny := true
+            } catch {
+                failed.Push(relPath)
+            }
+        }
+        if okAny {
+            folderId := RegExReplace(destDir, "[^a-zA-Z0-9]", "_")
+            if (IniRead(inifile, "PhraseFolders", folderId, "") = "")
+                IniWrite(destDir, inifile, "PhraseFolders", folderId)
+        }
+    }
+    return failed
+}
+
+; Settings → Phrase folders → "Download phrase packs"
+_DoPhrasePackDownload(packs, sender) {
+    global wv2Core
+    failed := _PhrasePackDownloadCore(packs)
+    ReloadPhrases()
+    _SafeSend(sender, "window.phrasePackDone(" JSON.Dump(Map("failed", failed.Length)) ")")
+    _SafeSend(wv2Core, "window.receiveFiles(" BuildFilesJson() ")")
+    if (failed.Length > 0)
+        MsgBox "Följande filer kunde inte laddas ner:`n" ArrJoin(failed, "`n"), "Nedladdning — fel", "Icon!"
+}
+
 ; First-run: download any selected word lists that aren't on disk yet.
 ; selectedFiles holds wordlists-repo-relative paths (e.g. general/words_sv.txt
 ; or medicin/mesh_sv.txt); every file lands flat in lib\words\.
-_FirstRunFinish(selectedFiles, sender) {
+_FirstRunFinish(selectedFiles, packs, sender) {
     global g_dictPaths, inifile, wv2Core
     if (selectedFiles.Length > 0) {
         baseUrl := "https://raw.githubusercontent.com/ibst1/wordlists/master/"
@@ -1540,6 +1598,11 @@ _FirstRunFinish(selectedFiles, sender) {
         ApplyDictionaries()
         if (failed.Length > 0)
             MsgBox "Följande ordlistor kunde inte laddas ner:`n" ArrJoin(failed, "`n"), "Nedladdning — fel", "Icon!"
+    }
+    if (IsObject(packs) && packs.Length > 0) {
+        packFailed := _PhrasePackDownloadCore(packs)
+        if (packFailed.Length > 0)
+            MsgBox "Följande fraspaket-filer kunde inte laddas ner:`n" ArrJoin(packFailed, "`n"), "Nedladdning — fel", "Icon!"
     }
     ReloadPhrases()
     _SafeSend(sender, "window.closeFirstRun()")
