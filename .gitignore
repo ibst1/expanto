@@ -1,0 +1,39 @@
+# ── Personal / machine-specific — NEVER commit ──────────────────────────────
+# Holds API key, phrase-folder paths, window state, usage counters.
+settings.ini
+utvecklingsideer.md
+# Phrase usage counts (per machine)
+usage.tsv
+
+# Legacy native-GUI build, superseded by the WebView2 edition — kept locally only
+archive/
+
+# Build toolchain cache and output (build.ps1)
+build/
+dist/
+
+# Raw extracted document text (UNGENERICISED — may contain personal data)
+_extract/
+
+# Backups taken before an AI cleanup (copies of phrase files, incl. .enc)
+_cleanup_backup/
+
+# User-generated custom word list (may contain personal/medical terms you added)
+lib/words/custom_*.txt
+
+# Editor / backup files
+*.bak
+
+# Encrypted phrase files — ciphertext, but they hold personal/sensitive phrases
+*.enc
+
+# Windows cruft
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ── Word lists ───────────────────────────────────────────────────────────────
+# lib/words/        = optional download from github.com/ibst1/wordlists
+# lib/words_private/ = your own private lists, never committed
+lib/words/
+lib/words_private/
