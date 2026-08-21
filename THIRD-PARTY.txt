@@ -1,0 +1,20 @@
+Third-party components bundled with Expanto
+============================================
+
+WebView2.ahk (v2.0.5), Promise.ahk, ComVar.ahk
+  Author:  thqby
+  Source:  https://github.com/thqby/ahk2_lib
+  License: MIT
+
+WebView2Loader.dll (x64)
+  Author:  Microsoft Corporation
+  Source:  Microsoft.Web.WebView2 SDK (https://www.nuget.org/packages/Microsoft.Web.WebView2/)
+  License: Microsoft WebView2 SDK license (redistributable loader)
+
+All other code in this repository is original to the project and covered by
+the LICENSE file (MIT).
+
+Optional downloads (not part of this repository) keep their own licenses:
+  - Word lists:  https://github.com/ibst1/wordlists  (see its SOURCES.md)
+  - Autocorrect packs: based on Wikipedia's "Lists of common misspellings",
+    CC BY-SA 4.0
