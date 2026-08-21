@@ -590,7 +590,16 @@ UI appearance settings (theme, language, font size, layout, list preferences) ar
 
 ### Autocorrection (optional download)
 
-Phrase files with common misspellings (`autocorrect_en.ahk`, ~4 090 entries from Wikipedia's *Lists of common misspellings*, and `autocorrect_sv.ahk`; CC BY-SA 4.0) are available as a separate content pack. Add the folder as a phrase folder to enable autocorrection.
+Phrase files with common misspellings (`autocorrect_en.ahk`, ~4 090 entries from Wikipedia's *Lists of common misspellings*, and `autocorrect_sv.ahk`; CC BY-SA 4.0) are available at [ibst1/autocorrect](https://github.com/ibst1/autocorrect). Clone or download, then add the folder as a phrase folder to enable autocorrection.
+
+### Phrase example packs (optional download)
+
+Ready-made example phrases to start from:
+
+- [ibst1/frasexempel](https://github.com/ibst1/frasexempel) — general packs (Swedish): e-mail building blocks, date expressions, code snippets, special characters.
+- [ibst1/journalfrasexempel](https://github.com/ibst1/journalfrasexempel) — generic Swedish clinical-note templates (example content only, no real data).
+
+Clone or download a repo and add the folder — or just the subfolders you want — under **Settings → Phrase folders**.
 
 ### Word lists — `lib\words\` (optional download)
 
