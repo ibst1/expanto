@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.6 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.7 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -862,7 +862,7 @@ OnWebMessageReceived(sender, args) {
         IniWrite(msg.Has("insertKey") ? msg["insertKey"] : "^Space", inifile, "Popup", "InsertKey")
         IniWrite(msg.Has("upKey")     ? msg["upKey"]     : "Up",     inifile, "Popup", "UpKey")
         IniWrite(msg.Has("downKey")   ? msg["downKey"]   : "Down",   inifile, "Popup", "DownKey")
-        IniWrite(msg.Has("numKey")    ? msg["numKey"]    : "",        inifile, "Popup", "NumKey")
+        IniWrite(msg.Has("numKey") && msg["numKey"] != "" ? msg["numKey"] : "off", inifile, "Popup", "NumKey")
         g_hintsEnabled := msg.Has("enabled") && msg["enabled"] ? true : false
         g_hintFuzzy    := msg.Has("fuzzy")   && msg["fuzzy"]   ? true : false
         g_hintMinLen   := msg.Has("chars")   ? msg["chars"]   : 2
@@ -1784,7 +1784,7 @@ LoadPopupHotkeys() {
     newInsert := Trim(IniRead(inifile, "Popup", "InsertKey", "^Space"))
     newUp     := Trim(IniRead(inifile, "Popup", "UpKey",     "Up"))
     newDown   := Trim(IniRead(inifile, "Popup", "DownKey",   "Down"))
-    newNumMod := Trim(IniRead(inifile, "Popup", "NumKey",    ""))
+    newNumMod := _ReadNumKeySetting()
     if (newInsert != "")
         try Hotkey(newInsert, (*) => HintInsert(), "On")
     if (newUp != "")
@@ -1802,6 +1802,29 @@ LoadPopupHotkeys() {
     g_hintUpKey     := newUp
     g_hintDownKey   := newDown
     g_hintNumMod    := newNumMod
+    global g_hintFootCtl
+    if (IsSet(g_hintFootCtl) && IsObject(g_hintFootCtl))
+        try g_hintFootCtl.Value := _HintFooterText()
+}
+
+; Popup footer reflecting the actual key bindings (e.g. "Ctrl+1-9: välj direkt")
+_HintFooterText() {
+    global g_hintNumMod, g_hintInsertKey
+    t := " "
+    if (g_hintNumMod != "")
+        t .= _HkPretty(g_hintNumMod) "1-9: välj direkt  ·  "
+    t .= _HkPretty(g_hintInsertKey != "" ? g_hintInsertKey : "^Space")
+       . " / Klick: infoga  ·  ↑↓: bläddra  ·  Esc: stäng"
+    return t
+}
+
+_HkPretty(k) {
+    k := StrReplace(k, "<^>!", "AltGr+")
+    k := StrReplace(k, "^", "Ctrl+")
+    k := StrReplace(k, "!", "Alt+")
+    k := StrReplace(k, "+", "Shift+")
+    k := StrReplace(k, "#", "Win+")
+    return k
 }
 
 BuildPopupSettingsJson() {
@@ -1814,7 +1837,15 @@ BuildPopupSettingsJson() {
         "insertKey", IniRead(inifile, "Popup", "InsertKey", "^Space"),
         "upKey",     IniRead(inifile, "Popup", "UpKey",     "Up"),
         "downKey",   IniRead(inifile, "Popup", "DownKey",   "Down"),
-        "numKey",    IniRead(inifile, "Popup", "NumKey",    "")))
+        "numKey",    _ReadNumKeySetting()))
+}
+
+; Ctrl+digit is the default. "off" = explicitly disabled; a legacy EMPTY value
+; (older builds wrote NumKey= when nothing was chosen) also gets the default.
+_ReadNumKeySetting() {
+    global inifile
+    nk := Trim(IniRead(inifile, "Popup", "NumKey", "^"))
+    return (nk = "off") ? "" : (nk = "" ? "^" : nk)
 }
 
 ; ── Dynamic field settings ─────────────────────────────────────────────────────
@@ -2940,9 +2971,17 @@ _RestorePastedClipboard(saved, ourText) {
 ; AHK now sees Ctrl+Shift+Space). Clear it with an explicit Ctrl-up, but ONLY when Ctrl is
 ; actually still down: firing a spurious Ctrl-up on every paste could itself desync a
 ; bidirectional CapsLock↔Ctrl remap. {Blind} stops AHK from re-adding modifiers.
-_ReleaseCtrl() {
-    if GetKeyState("Ctrl")
-        SendInput("{Blind}{LCtrl Up}{RCtrl Up}")
+_ReleaseCtrl() => _ReleaseStuckMods()
+
+; Release any modifier that is logically stuck down without being physically
+; held — the cause of "Shift+Space suddenly stops opening the GUI": AHK then
+; sees Ctrl+Shift+Space (or Alt+…) and the plain hotkey no longer matches.
+; The physical check keeps a bidirectional CapsLock↔Ctrl remap in sync.
+_ReleaseStuckMods() {
+    for k in ["LCtrl", "RCtrl", "LAlt", "RAlt", "LShift", "RShift", "LWin", "RWin"] {
+        if (GetKeyState(k) && !GetKeyState(k, "P"))
+            SendInput("{Blind}{" k " Up}")
+    }
 }
 
 ; Restoring the clipboard can throw if the target app or a clipboard manager
@@ -3011,6 +3050,7 @@ SendExpanded(text) {
         SendInput("{Text}" text)
     if (caretBack)
         SendInput("{Left " caretBack "}")
+    _ReleaseStuckMods()   ; synthetic sends can leave a modifier logically stuck
 }
 
 ExpandAndSend(rawPhrase, filepath := "") {
@@ -3554,6 +3594,13 @@ TypedBufKey(ih, vk, sc) {
     ; nav keys are handled by the #HotIf block while the popup is visible
     if (HintShown() && (vk = 0x28 || vk = 0x26 || vk = 0x09 || vk = 0x1B || vk = 0x0D))
         return
+    ; While the popup is shown, chorded keys (Ctrl/Alt/Win + key) are popup
+    ; hotkeys (Ctrl+digit select, Ctrl+Space insert) or app shortcuts — never
+    ; typing. Don't reset the word or hide the popup for them; previously this
+    ; killed the popup before the digit-select hotkey could act.
+    if (HintShown() && (GetKeyState("Ctrl", "P") || GetKeyState("Alt", "P")
+        || GetKeyState("LWin", "P") || GetKeyState("RWin", "P")))
+        return
     g_hintWord := "", HintHide()
 }
 
@@ -3644,7 +3691,8 @@ CreateHintPopup() {
     g.BackColor := "2D2D30"
     lv := g.AddListView("w420 r8 -Hdr -Multi Background2D2D30 cCCCCCC", ["Trigger", "Expansion"])
     lv.OnEvent("Click", (*) => HintInsert())
-    foot := g.AddText("xm w420 +0x200 Background252526", " 1-9: välj direkt  ·  Ctrl+Space / Klick: infoga  ·  ↑↓: bläddra  ·  Esc: stäng")
+    foot := g.AddText("xm w420 +0x200 Background252526", _HintFooterText())
+    global g_hintFootCtl := foot
     foot.SetFont("s8 c858585")
     g_hintGui := g
     g_hintLV  := lv
@@ -3803,6 +3851,7 @@ HintInsert() {
     if (bs)
         SendEvent("{Backspace " bs "}")
     ExpandAndSend(insert, m.src)
+    _ReleaseStuckMods()
     g_hintSuppressed := false
     _MaybePromptUrl(hs)
 }
@@ -4019,6 +4068,7 @@ _DirectSendExpanded(text) {
         _SendTextDirect(text)
     if (caretBack)
         SendInput("{Left " caretBack "}")
+    _ReleaseStuckMods()   ; synthetic sends can leave a modifier logically stuck
 }
 
 StartStepThrough(hs, rawPhrase) {
