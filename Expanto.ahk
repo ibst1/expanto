@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.8 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.9 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -1057,7 +1057,11 @@ OnWebMessageReceived(sender, args) {
             return
         editorCmd := Trim(IniRead(inifile, "General", "EditorCmd", ""))
         if (editorCmd = "") {
-            Run("notepad.exe `"" path "`"")
+            ; Notepad can't open folders — fall back to Explorer for those
+            if InStr(FileExist(path), "D")
+                Run("explorer.exe `"" path "`"")
+            else
+                Run("notepad.exe `"" path "`"")
         } else {
             cmd := StrReplace(editorCmd, "{file}", path)
             Run(cmd)

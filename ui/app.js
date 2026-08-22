@@ -46,6 +46,8 @@ const LANG = {
     'folders.desc': 'Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.',
     'folders.add': '＋ Lägg till mapp',
     'folders.delTip': 'Ta bort mapp',
+    'folders.openExplorer': 'Öppna mappen i Utforskaren',
+    'folders.openEditor': 'Öppna i extern redigerare',
     // — Kortkommandon —
     'hk.format': 'Tangentformat: <code>+</code> Shift &nbsp;·&nbsp; <code>^</code> Ctrl &nbsp;·&nbsp; <code>!</code> Alt &nbsp;·&nbsp; <code>#</code> Win &nbsp;·&nbsp; <code>&lt;^&gt;!</code> AltGr &nbsp;·&nbsp; CapsLock_',
     'hk.capture': '🎹 Fånga tangent',
@@ -444,6 +446,8 @@ const LANG = {
     'folders.desc': 'All .ahk and .enc files in the selected folders are loaded as phrase files.',
     'folders.add': '＋ Add folder',
     'folders.delTip': 'Remove folder',
+    'folders.openExplorer': 'Open the folder in Explorer',
+    'folders.openEditor': 'Open in external editor',
     // — Shortcuts —
     'hk.format': 'Key format: <code>+</code> Shift &nbsp;·&nbsp; <code>^</code> Ctrl &nbsp;·&nbsp; <code>!</code> Alt &nbsp;·&nbsp; <code>#</code> Win &nbsp;·&nbsp; <code>&lt;^&gt;!</code> AltGr &nbsp;·&nbsp; CapsLock_',
     'hk.capture': '🎹 Capture key',
@@ -2906,10 +2910,19 @@ function renderFolderList(folders) {
     li.innerHTML =
       `<label class="folder-toggle" title="${escHtml(f.path || '')}">` +
       `<input type="checkbox" ${f.enabled ? 'checked' : ''} data-id="${escHtml(f.id)}"> ` +
-      `<span class="folder-name">${escHtml(name)}</span></label>` +
+      `<span class="folder-name">${escHtml(name)}</span>` +
+      `<span class="folder-path">${escHtml(f.path || '')}</span></label>` +
+      `<button class="folder-act folder-open" title="${escHtml(T('folders.openExplorer'))}">📂</button>` +
+      `<button class="folder-act folder-edit" title="${escHtml(T('folders.openEditor'))}">📝</button>` +
       `<button class="folder-del" data-id="${escHtml(f.id)}" title="${escHtml(T('folders.delTip'))}">✕</button>`;
     li.querySelector('input').addEventListener('change', e => {
       postToAhk({ action: 'toggleFolder', id: e.target.dataset.id, enabled: e.target.checked });
+    });
+    li.querySelector('.folder-open').addEventListener('click', () => {
+      if (f.path) postToAhk({ action: 'openFolder', path: f.path });
+    });
+    li.querySelector('.folder-edit').addEventListener('click', () => {
+      if (f.path) postToAhk({ action: 'openEditor', path: f.path });
     });
     li.querySelector('.folder-del').addEventListener('click', e => {
       const id = e.currentTarget.dataset.id;

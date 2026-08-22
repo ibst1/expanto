@@ -774,7 +774,27 @@ textarea.field-input { min-height: 80px; }
   overflow: hidden;
 }
 .folder-toggle input { accent-color: var(--accent); flex-shrink: 0; }
-.folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.folder-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  direction: rtl;          /* ellipsis at the START so the folder tail stays visible */
+  text-align: left;
+  margin-left: 6px;
+}
+.folder-act {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  opacity: .7;
+}
+.folder-act:hover { opacity: 1; }
 .folder-del {
   background: none;
   border: none;
