@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.4 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.5 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -2918,7 +2918,19 @@ PasteText(text) {
         SendInput("^v")
         _ReleaseCtrl()   ; guard against a CapsLock→Ctrl remap leaving Ctrl stuck after the paste
     }
-    SetTimer(() => _RestoreClipboard(saved), -500)
+    ; Slow paste consumers (Word with add-ins etc.) can read the clipboard well
+    ; after ^v was sent — restoring after only 500 ms made them paste the OLD
+    ; clipboard intermittently. Wait longer, and only restore while the
+    ; clipboard still holds our text (never clobber something the user copied).
+    SetTimer(_RestorePastedClipboard.Bind(saved, text), -1500)
+}
+
+_RestorePastedClipboard(saved, ourText) {
+    try {
+        if (A_Clipboard != ourText)
+            return   ; the user copied something new meanwhile — leave it alone
+    }
+    _RestoreClipboard(saved)
 }
 
 ; A CapsLock→Ctrl remap (or any external keyboard hook) can swallow the key-up half of a
@@ -3241,7 +3253,7 @@ CoupleIdentityGuard(filepath) {
     return MsgBox(msg, "Identitet ändrad", "YesNo Icon!") = "Yes"
 }
 
-ExpandDynamic(phrase, filepath := "", trigger := "") {
+ExpandDynamic(phrase, filepath := "", trigger := "", forceMode := "") {
     global g_dynMode, g_dynAppModes, g_coupleLastTick
     phrase := StrReplace(phrase, "{date}",      FormatTime(, "yyyy-MM-dd"))
     phrase := StrReplace(phrase, "{time}",      FormatTime(, "HH:mm"))
@@ -3295,6 +3307,8 @@ ExpandDynamic(phrase, filepath := "", trigger := "") {
             break
         }
     }
+    if (forceMode != "")
+        mode := forceMode
     hasChoice := false
     for nm in fields {
         if ParseChoiceField(nm).choice
@@ -3305,6 +3319,19 @@ ExpandDynamic(phrase, filepath := "", trigger := "") {
         mode := (fields.Length = 1 && !hasChoice) ? "inline" : "dialog"
     if (mode = "inline" && hasChoice)
         mode := "dialog"
+    if (mode = "inline") {
+        ; A field used MORE THAN ONCE must be prompted — inline would replace
+        ; every occurrence with the caret marker and blank all but the first
+        ; (e.g. "BT {värde} … puls {värde}" lost its later fields).
+        for nm in fields {
+            cnt := 0
+            StrReplace(phrase, "{" nm "}", , , &cnt)
+            if (cnt > 1) {
+                mode := "dialog"
+                break
+            }
+        }
+    }
     if (coupleStore.Length)            ; coupled prompts must be captured to be memorised
         mode := "dialog"
 
@@ -3808,6 +3835,60 @@ InitStepKey() {
 ; New style: splits at blank lines (\n\n), detecting section headers.
 ; Fallback: old-style | separator for backward compat.
 SplitPhraseIntoSegments(text) {
+    global g_stepLabels
+    ; 1. Labelled lines: a line starting with "Etikett: …" opens a new segment.
+    ;    With a configured whitelist (Stegetiketter) only those labels count;
+    ;    without one, any label-looking line counts. Either way at least two
+    ;    labelled lines are required, so ordinary prose is never split.
+    lines := StrSplit(text, "`n", "`r")
+    labelRe := "^\s*([A-Za-zÅÄÖåäöÜüÉé][A-Za-zÅÄÖåäöÜüÉé0-9 /().,\-]{0,39}?)\s*:\s*(?!/)"
+    marks := [], hits := 0
+    for line in lines {
+        lbl := ""
+        if (g_stepLabels.Length > 0) {
+            for wl in g_stepLabels
+                if RegExMatch(line, "i)^\s*\Q" wl "\E\s*:") {
+                    lbl := wl
+                    break
+                }
+        } else if RegExMatch(line, "i)" labelRe, &m)
+            lbl := Trim(m[1])
+        marks.Push(lbl)
+        if (lbl != "")
+            hits++
+    }
+    ; Explicit whitelist: one hit is enough (leading text becomes its own
+    ; segment). Heuristic mode needs two so ordinary prose never splits.
+    if (hits >= (g_stepLabels.Length > 0 ? 1 : 2)) {
+        segs := [], curHeader := "", curBody := [], started := false
+        for i, line in lines {
+            lbl := marks[i]
+            if (lbl != "") {
+                if (started) {
+                    body := Trim(ArrJoin(curBody, "`n"))
+                    if (curHeader != "" || body != "")
+                        segs.Push(Map("header", curHeader, "body", body))
+                }
+                started := true
+                curHeader := lbl
+                rest := Trim(RegExReplace(line, "i)^\s*\Q" lbl "\E\s*:\s*", "", , 1))
+                curBody := rest != "" ? [rest] : []
+            } else {
+                if (!started) {
+                    started := true
+                    curHeader := ""
+                    curBody := []
+                }
+                curBody.Push(line)
+            }
+        }
+        body := Trim(ArrJoin(curBody, "`n"))
+        if (curHeader != "" || body != "")
+            segs.Push(Map("header", curHeader, "body", body))
+        if (segs.Length >= 2)
+            return segs
+    }
+
     ; Try paragraph-based splitting on blank lines
     paragraphs := []
     for chunk in StrSplit(text, "`n`n", "`r")
@@ -3881,6 +3962,23 @@ _BuildSegmentText(seg) {
     return body
 }
 
+; Insert one step segment: resolve its dynamic fields first (always via the
+; dialog — inline caret placement doesn't fit the step flow), then type it.
+_StepInsertSegment(seg) {
+    global g_stepHs
+    txt := _BuildSegmentText(seg)
+    fp := (IsSet(g_stepHs) && IsObject(g_stepHs)) ? g_stepHs.filepath : ""
+    tr := (IsSet(g_stepHs) && IsObject(g_stepHs)) ? g_stepHs.short    : ""
+    if HasDynamicFields(txt) {
+        res := ""
+        try res := ExpandDynamic(txt, fp, tr, "dialog")
+        if (!IsObject(res) || !res.ok)
+            return
+        txt := StrReplace(res.text, "{cursor}", "")
+    }
+    _SendTextDirect(txt)
+}
+
 _SendTextDirect(text) {
     if InStr(text, "`n") {
         parts := StrSplit(text, "`n")
@@ -3927,8 +4025,7 @@ StartStepThrough(hs, rawPhrase) {
     g_stepHs       := hs
     if (g_stepKey != "")
         try Hotkey(g_stepKey, "On")
-    insertText := _BuildSegmentText(segs[1])
-    _SendTextDirect(insertText)
+    _StepInsertSegment(segs[1])
     CreateStepPopup()
     ShowStepPopup()
     return true
@@ -3952,8 +4049,7 @@ StepNext() {
         return
     }
     g_stepIdx := nextIdx
-    insertText := _BuildSegmentText(g_stepSegments[nextIdx])
-    _SendTextDirect(insertText)
+    _StepInsertSegment(g_stepSegments[nextIdx])
     if (g_stepIdx >= g_stepSegments.Length)
         ClearStepState(true)
     else

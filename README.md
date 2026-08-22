@@ -376,10 +376,10 @@ If an identity field (e.g. `customerid`) is read from the window title and its v
 
 The **▶** button (and a global shortcut) inserts a phrase **one segment at a time**, pausing in between — useful when the target form has separate fields.
 
-- Phrases split at `|` or at heading lines matching configured labels.
-- Press the shortcut to paste the next segment.
-- **Escape** cancels.
-- Which `Label:` headings count as segment boundaries is configured in **Settings → Dynamic fields → Step labels**.
+- Phrases split at blank lines, at labelled lines (`Label: …` — two or more are required, so ordinary prose never splits), or at `|`.
+- **Settings → Dynamic fields → Step labels** optionally restricts which labels count; with a whitelist, a single matching label is enough.
+- Dynamic fields are prompted per segment as it is inserted.
+- Press the shortcut to paste the next segment; **Escape** cancels.
 
 ---
 
