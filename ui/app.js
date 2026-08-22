@@ -101,8 +101,8 @@ const LANG = {
     'pop.up': 'Bläddra upp:',
     'pop.down': 'Bläddra ner:',
     'pop.numKey': 'Val med siffertangent:',
-    'pop.numKey.off': 'Av (standard)',
-    'pop.numKey.ctrl': 'Ctrl+siffra (1–9)',
+    'pop.numKey.off': 'Av',
+    'pop.numKey.ctrl': 'Ctrl+siffra (1–9) (standard)',
     'pop.numKey.alt': 'Alt+siffra (1–9)',
     'pop.numKey.shift': 'Shift+siffra (1–9)',
     'pop.tip': 'Tips: vänsterklick i popupen infogar förslaget; högerklick öppnar frasen i huvud-GUIt.',
@@ -498,8 +498,8 @@ const LANG = {
     'pop.up': 'Scroll up:',
     'pop.down': 'Scroll down:',
     'pop.numKey': 'Pick with digit key:',
-    'pop.numKey.off': 'Off (default)',
-    'pop.numKey.ctrl': 'Ctrl+digit (1–9)',
+    'pop.numKey.off': 'Off',
+    'pop.numKey.ctrl': 'Ctrl+digit (1–9) (default)',
     'pop.numKey.alt': 'Alt+digit (1–9)',
     'pop.numKey.shift': 'Shift+digit (1–9)',
     'pop.tip': 'Tip: left-click in the popup inserts the suggestion; right-click opens the phrase in the main window.',
@@ -1587,7 +1587,7 @@ window.receivePopupSettings = function(data) {
   set('popupInsert',   data.insertKey ?? 'Tab');
   set('popupUp',       data.upKey    ?? 'Up');
   set('popupDown',     data.downKey  ?? 'Down');
-  set('popupNumKey',   data.numKey   ?? '');
+  set('popupNumKey',   data.numKey   ?? '^');
 };
 
 window.receiveFileSettings = function(data) {
