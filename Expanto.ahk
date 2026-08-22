@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.5 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.6 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -102,6 +102,7 @@ global g_hintSuppressed := false
 global g_hintWord     := ""
 global g_hintMinLen   := Integer(IniRead(inifile, "Popup", "Chars",   2))
 global g_hintTimeout  := Integer(IniRead(inifile, "Popup", "Timeout", 5))
+global g_hintPinned   := false   ; set once the user navigates the popup — no auto-close until hidden
 global g_hintMaxRows  := 8
 global g_hintFuzzy    := IniRead(inifile, "Popup", "Fuzzy", 0) != "0"
 global g_hintInsertKey := ""
@@ -3736,31 +3737,36 @@ HintUpdate() {
 }
 
 HintShow() {
-    global g_hintGui, g_hintTimeout
+    global g_hintGui, g_hintTimeout, g_hintPinned
     if CaretGetPos(&cx, &cy)
         g_hintGui.Show("x" cx " y" (cy + 22) " NoActivate AutoSize")
     else {
         MouseGetPos(&mx, &my)
         g_hintGui.Show("x" mx " y" (my + 18) " NoActivate AutoSize")
     }
-    if (g_hintTimeout > 0)
+    if (g_hintTimeout > 0 && !g_hintPinned)
         SetTimer(HintAutoClose, -g_hintTimeout * 1000)
 }
 
 HintAutoClose() => HintHide()
 
 HintHide() {
-    global g_hintGui
+    global g_hintGui, g_hintPinned
+    g_hintPinned := false
     SetTimer(HintAutoClose, 0)
     if (g_hintGui != "")
         try g_hintGui.Hide()
 }
 
 HintNav(dir) {
-    global g_hintLV
+    global g_hintLV, g_hintPinned
     n := g_hintLV.GetCount()
     if (!n)
         return
+    ; Navigating = actively choosing: pin the popup open (no auto-close)
+    ; until it is dismissed manually or a suggestion is inserted.
+    g_hintPinned := true
+    SetTimer(HintAutoClose, 0)
     f := g_hintLV.GetNext(0, "F")
     if (!f)
         f := 1
