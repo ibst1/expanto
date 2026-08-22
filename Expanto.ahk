@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.7 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.8 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -804,6 +804,17 @@ OnWebMessageReceived(sender, args) {
         if (IsObject(packs) && packs.Length > 0)
             SetTimer(_DoPhrasePackDownload.Bind(packs, sender), -1)
 
+    } else if (action = "getPackFolder") {
+        _SafeSend(sender, "window.receivePackFolder(" JSON.Dump(_PackDir()) ")")
+
+    } else if (action = "choosePackFolder") {
+        global inifile
+        chosen := DirSelect("*" _PackDir(), 3, "Välj mapp för nedladdade fraspaket")
+        if (chosen != "") {
+            IniWrite(chosen, inifile, "Content", "PackDir")
+            _SafeSend(sender, "window.receivePackFolder(" JSON.Dump(chosen) ")")
+        }
+
     } else if (action = "saveDictSettings") {
         raw := msg.Has("paths") ? msg["paths"] : ""
         g_dictPaths := []
@@ -1519,8 +1530,15 @@ SaveDictSettings() {
     IniWrite(ArrJoin(g_dictPaths, "|"), inifile, "Spellcheck", "dictionaries")
 }
 
-; Download phrase packs from the ahk-phrases repo into %APPDATA%\Expanto\packs\
-; and register each pack folder as a phrase folder. packs = array of
+; The folder phrase packs are downloaded into (each pack gets a subfolder).
+; Configurable via the folder picker on the Phrase folders settings page.
+_PackDir() {
+    global inifile
+    return IniRead(inifile, "Content", "PackDir", A_AppData "\Expanto\packs")
+}
+
+; Download phrase packs from the ahk-phrases repo into _PackDir()\<pack>\ and
+; register each pack folder as a phrase folder. packs = array of
 ; Map("name", <top folder>, "files", [repo-relative .ahk paths]). Returns an
 ; array of files that failed to download.
 _PhrasePackDownloadCore(packs) {
@@ -1532,7 +1550,7 @@ _PhrasePackDownloadCore(packs) {
         files := pack.Has("files") ? pack["files"] : []
         if (name = "" || !IsObject(files) || !files.Length)
             continue
-        destDir := A_AppData "\Expanto\packs\" name
+        destDir := _PackDir() "\" name
         if !DirExist(destDir)
             try DirCreate(destDir)
         okAny := false

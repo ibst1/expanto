@@ -35,6 +35,7 @@ const LANG = {
     'packs.title': 'Ladda ner fraspaket',
     'packs.desc': 'Färdiga fraspaket från ahk-phrases-repot. Valda paket laddas ner och läggs automatiskt till som frasmappar.',
     'packs.none': 'Inga fraspaket hittades.',
+    'packs.saveTo': 'Sparas i:',
     'packs.files': n => `${n} fil${n === 1 ? '' : 'er'}`,
     'packs.downloading': 'Laddar ner…',
     'packs.done': 'Klart — paketen har laddats ner och lagts till som frasmappar.',
@@ -432,6 +433,7 @@ const LANG = {
     'packs.title': 'Download phrase packs',
     'packs.desc': 'Ready-made phrase packs from the ahk-phrases repo. Selected packs are downloaded and added as phrase folders automatically.',
     'packs.none': 'No phrase packs found.',
+    'packs.saveTo': 'Saved to:',
     'packs.files': n => `${n} file${n === 1 ? '' : 's'}`,
     'packs.downloading': 'Downloading…',
     'packs.done': 'Done — the packs were downloaded and added as phrase folders.',
@@ -2382,6 +2384,7 @@ function bindUI() {
     postToAhk({ action: 'downloadPhrasePacks', packs });
   });
   document.getElementById('btnRefreshPhrasePacks')?.addEventListener('click', () => loadPhrasePackIndex(true));
+  document.getElementById('btnChoosePackFolder')?.addEventListener('click', () => postToAhk({ action: 'choosePackFolder' }));
   document.getElementById('btnFirstRunStart').addEventListener('click', () => {
     const allFiles = [];
     document.querySelectorAll('.fr-bundle-chk:checked').forEach(chk => {
@@ -2607,7 +2610,10 @@ function showSettingsPage(page) {
   const targetId = pageIds[page];
   if (targetId) document.getElementById(targetId).classList.remove('hidden');
   if (page === 'spell') loadWordlistIndex();
-  if (page === 'folders') loadPhrasePackIndex();
+  if (page === 'folders') {
+    loadPhrasePackIndex();
+    postToAhk({ action: 'getPackFolder' });
+  }
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -2980,6 +2986,11 @@ async function loadPhrasePackIndex(force) {
 window.phrasePackDone = function(d) {
   const st = document.getElementById('phrasePackStatus');
   if (st) st.textContent = d && d.failed ? T('packs.someFailed', d.failed) : T('packs.done');
+};
+
+window.receivePackFolder = function(path) {
+  const lbl = document.getElementById('packDlFolderLabel');
+  if (lbl) lbl.textContent = path || '';
 };
 
 function renderWordlistIndex(files) {
