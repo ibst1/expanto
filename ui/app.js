@@ -377,6 +377,8 @@ const LANG = {
     'gen.navSections': 'Navigeringspaneler',
     'gen.fontsize': 'Textstorlek',
     'gen.fontsize.normal': '13px (standard)',
+    'gen.about': 'Om Expanto',
+    'gen.github': 'Dokumentation och källkod: github.com/ibst1/expanto',
     'maint.ai.title': 'AI-funktioner',
     'maint.ai.desc': 'Kräver att AI (Claude) är aktiverat under Inställningar → AI (Claude).',
     'maint.ai.batchAll.label': '✨ AI-tagga synliga fraser',
@@ -777,6 +779,8 @@ const LANG = {
     'gen.navSections': 'Navigation panels',
     'gen.fontsize': 'Text size',
     'gen.fontsize.normal': '13px (default)',
+    'gen.about': 'About Expanto',
+    'gen.github': 'Documentation and source code: github.com/ibst1/expanto',
     'maint.ai.title': 'AI features',
     'maint.ai.desc': 'Requires AI (Claude) to be enabled under Settings → AI (Claude).',
     'maint.ai.batchAll.label': '✨ AI-tag visible phrases',
@@ -2186,6 +2190,10 @@ function bindUI() {
     const u = document.getElementById('fUrl').value.trim();
     if (!u) { alert(T('alert.noUrl')); return; }
     postToAhk({ action: 'openUrl', url: u });
+  });
+  document.getElementById('lnkGithub')?.addEventListener('click', e => {
+    e.preventDefault();
+    postToAhk({ action: 'openUrl', url: 'https://github.com/ibst1/expanto' });
   });
   // Auto-save: any edit in the detail body schedules a debounced save
   const _db = document.getElementById('detailBody');

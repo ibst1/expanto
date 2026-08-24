@@ -154,6 +154,8 @@ Each row shows the row number, trigger, phrase text and any metadata columns (ca
 
 Holds fields for trigger, phrase text, options, category, tags, comment, language, aliases, apps and URL/link. A **preview box** shows the phrase after dynamic expansion. **Save** writes the change to the file; **Save & insert** also inserts the phrase into the previously active window.
 
+If a phrase carries a link, a small dialog appears right after the phrase is inserted, offering to open the link — web addresses in the browser, file paths directly or in Explorer.
+
 ---
 
 ## Context menus
@@ -404,6 +406,7 @@ While you type, an optional floating popup suggests matching phrases. Configure 
 
 - **Left-click** a suggestion to insert it.
 - **Right-click** opens the phrase in the Expanto window.
+- Navigating with the Up/Down keys **pins** the popup — the inactivity timeout no longer closes it until you insert a suggestion, keep typing past a match, or press **Escape**.
 - Choose which files feed the popup via the **T** and **P** badges in the Files panel:
   - **T** — trigger hint: matches what you type against known triggers
   - **P** — phrase hint: matches against words in the phrase texts
@@ -568,8 +571,8 @@ Settings categories:
 
 | Category | Contents |
 |---|---|
-| **General** | theme, language, sidebar layout, navigation panels, font size, external editor, start minimized, start with Windows (Startup-folder shortcut) |
-| **Phrase folders** | add/remove/enable/disable phrase folders |
+| **General** | theme, language, sidebar layout, navigation panels, font size, external editor, start minimized, start with Windows (Startup-folder shortcut), link to this documentation |
+| **Phrase folders** | add/remove/enable/disable phrase folders (each row shows the folder's path and can open it in Explorer), download phrase packs |
 | **Shortcuts** | all global and in-window shortcuts |
 | **Popup** | hint-popup settings |
 | **Dynamic fields** | default mode, step labels, per-app overrides, insertion method |
