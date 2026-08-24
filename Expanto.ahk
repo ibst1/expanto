@@ -1841,10 +1841,13 @@ _HintFooterText() {
 }
 
 _HkPretty(k) {
+    ; "+" must be replaced before every other pass — the others insert literal "+"
+    ; separators, and a later +→Shift+ pass would mangle them
+    ; ("^Space" → "Ctrl+Space" → "CtrlShift+Space")
+    k := StrReplace(k, "+", "Shift+")
     k := StrReplace(k, "<^>!", "AltGr+")
     k := StrReplace(k, "^", "Ctrl+")
     k := StrReplace(k, "!", "Alt+")
-    k := StrReplace(k, "+", "Shift+")
     k := StrReplace(k, "#", "Win+")
     return k
 }
