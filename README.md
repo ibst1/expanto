@@ -45,6 +45,11 @@ Expanto is a **general-purpose** writing tool — suitable for any kind of repet
 1. Download the latest `Expanto-x.y.z.zip` from the [Releases page](https://github.com/ibst1/expanto/releases).
 2. Unpack anywhere and run **`Expanto.exe`**.
 
+`Expanto.exe` is the unmodified official AutoHotkey v2 interpreter, renamed —
+when started it loads the `Expanto.ahk` script beside it. All application code
+ships as readable text, and the binary is byte-identical to the official
+AutoHotkey release (which also keeps antivirus false positives away).
+
 ### Option B — run from source
 
 1. Windows with **[AutoHotkey v2](https://www.autohotkey.com/)** installed.
