@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.10 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.0.11 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
