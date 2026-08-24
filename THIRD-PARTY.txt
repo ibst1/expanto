@@ -1,6 +1,12 @@
 Third-party components bundled with Expanto
 ============================================
 
+AutoHotkey v2 interpreter (Expanto.exe is the unmodified official
+AutoHotkey64.exe, renamed; it runs the Expanto.ahk script beside it)
+  Author:  AutoHotkey Foundation / contributors
+  Source:  https://github.com/AutoHotkey/AutoHotkey
+  License: GPL v2
+
 WebView2.ahk (v2.0.5), Promise.ahk, ComVar.ahk
   Author:  thqby
   Source:  https://github.com/thqby/ahk2_lib
