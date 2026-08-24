@@ -1009,6 +1009,12 @@ textarea.field-input { min-height: 80px; }
   color: var(--text-dim);
   line-height: 1.6;
 }
+.sp-desc a {
+  color: var(--accent2);
+  text-decoration: none;
+  cursor: pointer;
+}
+.sp-desc a:hover { text-decoration: underline; }
 .sp-maint-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
