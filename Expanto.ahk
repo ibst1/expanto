@@ -1,4 +1,4 @@
-﻿; Expanto — v1.0.11 — AutoHotkey v2 hotstring manager with a WebView2 UI
+﻿; Expanto — v1.1.0 — AutoHotkey v2 hotstring manager with a WebView2 UI
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
@@ -58,8 +58,10 @@ global g_stepSegments     := []   ; phrase segments for current step-through (ar
 global g_stepIdx          := 0    ; 1-based index of last pasted segment (0 = inactive)
 global g_stepLabels       := []   ; label names loaded from INI (legacy | system)
 global g_stepKey          := ""   ; hotkey string for legacy StepNext
+global g_stepPrevKey      := ""   ; keyboard twin of the popup's "◄ Föregående"
 global g_stepHs           := ""   ; hs object for undo reference
 global g_stepKeepHeaders  := false ; popup toggle: keep section headers when inserting
+global g_stepKeepSpacing  := true  ; popup toggle: blank line between inserted steps
 global g_stepPopup        := unset
 
 ; ── Undo popup ────────────────────────────────────────────────────────────────
@@ -77,6 +79,17 @@ global g_fileHintPOff := []   ; fullpaths where phrase-hints are disabled
 ; ── Expansion globals ─────────────────────────────────────────────────────────
 global g_pasteMode   := StrLower(IniRead(inifile, "dynamic", "paste_mode",    "auto"))
 global g_pasteMinLen := IniRead(inifile, "dynamic", "paste_min_len", 30) + 0
+; Diagnostic line per expansion (see _InsertLog): trigger, sizes and timings only —
+; never phrase text or window titles. [Debug] insert_log=0 in the ini turns it off.
+global g_insertLog   := IniRead(inifile, "Debug", "insert_log", 0) + 0
+global g_dbgPhase    := ""   ; per-expansion timing breakdown, emptied by each HsFire
+; The clipboard backup is the most expensive step of a paste insert. Cache it against
+; the OS clipboard sequence number: after we restore our own backup the clipboard is
+; byte-for-byte what we saved, so the next paste can skip ClipboardAll entirely — and
+; a heavy hotstring user pastes many times between actual copies.
+global g_clipSeq     := 0
+global g_clipSaved   := ""
+global g_clipText    := ""   ; text form of the cached snapshot, re-checked before reuse
 global g_dynMode     := IniRead(inifile, "dynamic", "mode",          "auto")
 global g_lastFired   := ""
 global g_lastSent    := ""
@@ -507,9 +520,8 @@ OnWebMessageReceived(sender, args) {
         url     := d.Has("url") ? d["url"] : ""
         alts    := d.Has("alts") ? d["alts"] : ""
         altNm   := d.Has("altNames") ? d["altNames"] : ""
-        meta    := BuildMeta(cat, comment, lang, tags, dis, 0, aliases, apps, cf, url, alts, altNm)
-        esc     := Escape_CC(phrase)
-        newLine := ":" opts ":" trigger g_ColCol esc " " g_Semi " " meta
+        newLine := BuildPhraseLine(opts, trigger, phrase, cat, comment, lang, tags
+                                 , dis, aliases, apps, cf, url, alts, altNm)
         PhraseFileAppend(target, "`n" newLine)
         RebuildAndReload(target)
         _SafeSend(sender,"window.initData(" BuildPhrasesJson() ")")
@@ -547,9 +559,8 @@ OnWebMessageReceived(sender, args) {
         url     := msg.Has("url") ? msg["url"] : ""
         alts    := msg.Has("alts") ? msg["alts"] : ""
         altNm   := msg.Has("altNames") ? msg["altNames"] : ""
-        meta    := BuildMeta(cat, comment, lang, tags, 0, 0, aliases, apps, cf, url, alts, altNm)
-        esc     := Escape_CC(phrase)
-        newLine := ":" opts ":" trigger g_ColCol esc " " g_Semi " " meta
+        newLine := BuildPhraseLine(opts, trigger, phrase, cat, comment, lang, tags
+                                 , 0, aliases, apps, cf, url, alts, altNm)
         PhraseFileAppend(target, "`n" newLine)
         ; If this is a move, delete from source file now (fast); rebuild deferred
         moveFile := ""
@@ -619,10 +630,7 @@ OnWebMessageReceived(sender, args) {
             hs := FindHsById(id)
             if !IsObject(hs)
                 continue
-            meta    := BuildMeta(hs.category, hs.comment, hs.language,
-                                 ArrJoin(hs.tags, ","), hs.disabled, 0, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ","),
-                                 hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs))
-            newLine := ":" hs.options ":" hs.short g_ColCol Escape_CC(hs.long) " " g_Semi " " meta
+            newLine := BuildPhraseLineFromHs(hs, hs.short, hs.long)
             PhraseFileAppend(targetFile, "`n" newLine)
         }
         RebuildAndReload(targetFile)
@@ -641,10 +649,7 @@ OnWebMessageReceived(sender, args) {
                 continue
             if (hs.filepath = targetFile)
                 continue
-            meta    := BuildMeta(hs.category, hs.comment, hs.language,
-                                 ArrJoin(hs.tags, ","), hs.disabled, 0, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ","),
-                                 hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs))
-            newLine := ":" hs.options ":" hs.short g_ColCol Escape_CC(hs.long) " " g_Semi " " meta
+            newLine := BuildPhraseLineFromHs(hs, hs.short, hs.long)
             PhraseFileAppend(targetFile, "`n" newLine)
             RemoveHotstringFromFile(hs.filepath, hs.short)
             touched[hs.filepath] := true
@@ -672,10 +677,7 @@ OnWebMessageReceived(sender, args) {
                 nt := hs.short "_" i
             }
             used[nt] := true
-            meta    := BuildMeta(hs.category, hs.comment, hs.language,
-                                 ArrJoin(hs.tags, ","), hs.disabled, 0, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ","),
-                                 hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs))
-            newLine := ":" hs.options ":" nt g_ColCol Escape_CC(hs.long) " " g_Semi " " meta
+            newLine := BuildPhraseLineFromHs(hs, nt, hs.long)
             PhraseFileAppend(hs.filepath, "`n" newLine)
             touched[hs.filepath] := true
         }
@@ -755,11 +757,8 @@ OnWebMessageReceived(sender, args) {
             i++
             newTrigger := baseTrigger "_" i
         }
-        meta    := BuildMeta(hs.category, hs.comment, hs.language,
-                             ArrJoin(hs.tags, ","), hs.disabled, 0, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ","),
-                             hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs))
-        esc     := dupLong   ; already in on-disk escaped form (verbatim or filled-in)
-        newLine := ":" hs.options ":" newTrigger g_ColCol esc " " g_Semi " " meta
+        ; dupLong is already in on-disk escaped form (verbatim or filled-in)
+        newLine := BuildPhraseLineFromHs(hs, newTrigger, dupLong, true)
         PhraseFileAppend(target, "`n" newLine)
         RebuildAndReload(target)
         ; Find the new HS to auto-select it in JS
@@ -910,8 +909,14 @@ OnWebMessageReceived(sender, args) {
                 WriteFileSettings(p, s)
             }
         }
+        ; A preset that makes files visible must also lift a hidden folder
+        ; above them — otherwise the files stay out of sight and the preset
+        ; looks like it did nothing. The folder's other files stay hidden.
+        foldersChanged := !hidden ? PromoteFilesOutOfHiddenFolder(paths) : false
         ReloadPhrases(false)
         _SafeSend(sender, "window.receiveFiles(" BuildFilesJson() ")")
+        if foldersChanged
+            _SafeSend(sender, "window.receiveSettings(" BuildSettingsJson() ")")
 
     } else if (action = "fileBatchSet") {
         type   := msg.Has("type")   ? msg["type"]   : ""
@@ -1008,7 +1013,12 @@ OnWebMessageReceived(sender, args) {
             s := ReadFileSettings(path)
             s["hidden"] := hidden
             WriteFileSettings(path, s)
+            ; showing a file inside a hidden folder lifts the folder but keeps
+            ; the folder's other files hidden
+            foldersChanged := (hidden = "") ? PromoteFilesOutOfHiddenFolder([path]) : false
             _SafeSend(sender,"window.receiveFiles(" BuildFilesJson() ")")
+            if foldersChanged
+                _SafeSend(sender,"window.receiveSettings(" BuildSettingsJson() ")")
         }
 
     } else if (action = "setFolderHidden") {
@@ -1026,14 +1036,14 @@ OnWebMessageReceived(sender, args) {
                 if !found
                     g_hiddenFolders.Push(fid)
             } else {
-                newList := []
-                for h in g_hiddenFolders
-                    if (h != fid)
-                        newList.Push(h)
-                g_hiddenFolders := newList
+                HiddenFoldersRemove([fid])
+                ; "Show folder" means everything in it becomes visible — clear
+                ; the per-file hidden flags too, or the folder stays empty.
+                UnhideFilesInFolder(IniRead(inifile, "PhraseFolders", fid, ""))
             }
             SaveHiddenFolders()
             _SafeSend(sender,"window.receiveSettings(" BuildSettingsJson() ")")
+            _SafeSend(sender,"window.receiveFiles(" BuildFilesJson() ")")
         }
 
     } else if (action = "setSelected") {
@@ -1072,11 +1082,35 @@ OnWebMessageReceived(sender, args) {
         if (path != "")
             Run("explorer.exe `"" path "`"")
 
+    } else if (action = "previewPhraseLine") {
+        ; The status bar shows the line the editor is about to write. Built by the
+        ; same BuildPhraseLine the save path uses, so "exactly" really means exactly.
+        hs   := msg.Has("id") && msg["id"] != "" ? FindHsById(msg["id"]) : ""
+        opts := msg.Has("options") ? msg["options"] : (hs ? hs.options : "")
+        line := ""
+        try line := BuildPhraseLine(opts
+            , Trim(msg.Has("trigger") ? msg["trigger"] : "")
+            , msg.Has("phrase")  ? msg["phrase"]  : ""
+            , msg.Has("cat")     ? msg["cat"]     : ""
+            , msg.Has("comment") ? msg["comment"] : ""
+            , msg.Has("lang")    ? msg["lang"]    : ""
+            , msg.Has("tags")    ? msg["tags"]    : ""
+            , msg.Has("disabled") ? msg["disabled"] : 0
+            , msg.Has("aliases")  ? msg["aliases"]  : ""
+            , msg.Has("apps")     ? msg["apps"]     : ""
+            , msg.Has("customFields") ? msg["customFields"] : Map()
+            , msg.Has("url")      ? msg["url"]      : ""
+            , msg.Has("alts")     ? msg["alts"]     : ""
+            , msg.Has("altNames") ? msg["altNames"] : "")
+        _SafeSend(sender,"window.receivePhraseLine(" JSON.Dump(Map("line", line)) ")")
+
     } else if (action = "getGeneralSettings") {
         global inifile
         editorCmd := Trim(IniRead(inifile, "General", "EditorCmd", ""))
         startMin  := IniRead(inifile, "General", "StartMinimized", "0") != "0"
-        _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(Map("editorCmd", editorCmd, "startMinimized", startMin, "autostart", _AutostartOn())) ")")
+        gen := _ReadPasteSettings()
+        gen["editorCmd"] := editorCmd, gen["startMinimized"] := startMin, gen["autostart"] := _AutostartOn()
+        _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(gen) ")")
 
     } else if (action = "setLang") {
         global g_uiLang
@@ -1090,8 +1124,11 @@ OnWebMessageReceived(sender, args) {
         IniWrite(editorCmd, inifile, "General", "EditorCmd")
         IniWrite(startMin,  inifile, "General", "StartMinimized")
         _AutostartSet(msg.Has("autostart") && msg["autostart"])
+        _SavePasteSettings(msg)
         startMinBool := startMin = "1"
-        _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(Map("editorCmd", editorCmd, "startMinimized", startMinBool, "autostart", _AutostartOn())) ")")
+        gen := _ReadPasteSettings()
+        gen["editorCmd"] := editorCmd, gen["startMinimized"] := startMinBool, gen["autostart"] := _AutostartOn()
+        _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(gen) ")")
 
     } else if (action = "bulkSave") {
         ids  := msg["ids"]
@@ -1779,6 +1816,7 @@ _SaveHotkeySettings(msg) {
     g_stepKey := newStepKey
     if (g_stepKey != "")
         try Hotkey(g_stepKey, StepNextHotkey, "On")
+    ApplyStepPrevHotkey()
 }
 
 ; ── Popup settings ─────────────────────────────────────────────────────────────
@@ -1900,9 +1938,7 @@ BuildDynamicSettingsJson() {
     return JSON.Dump(Map(
         "defaultMode", IniRead(inifile, "DynamicFields", "DefaultMode", "auto"),
         "stepLabels",  IniRead(inifile, "DynamicFields", "StepLabels",  ""),
-        "appModes",    modesArr,
-        "pasteMode",   IniRead(inifile, "dynamic", "paste_mode",    "auto"),
-        "pasteMinLen", IniRead(inifile, "dynamic", "paste_min_len", 30) + 0))
+        "appModes",    modesArr))
 }
 
 _SaveDynamicSettings(msg) {
@@ -1929,12 +1965,25 @@ _SaveDynamicSettings(msg) {
     for row in g_dynAppModes
         parts.Push(row["app"] "=" row["mode"])
     IniWrite(ArrJoin(parts, "|"), inifile, "DynAppModes", "modes")
-    newPasteMode   := msg.Has("pasteMode")   ? StrLower(msg["pasteMode"])   : "auto"
-    newPasteMinLen := msg.Has("pasteMinLen") ? Integer(msg["pasteMinLen"])  : 30
-    IniWrite(newPasteMode,   inifile, "dynamic", "paste_mode")
-    IniWrite(newPasteMinLen, inifile, "dynamic", "paste_min_len")
-    g_pasteMode   := newPasteMode
-    g_pasteMinLen := newPasteMinLen
+}
+
+; Insertion method — moved out of "Dynamic fields", where it never belonged: it
+; governs every expansion, not only those with {fields}. The ini keys stay in the
+; [dynamic] section so nobody's existing choice is silently reset.
+_ReadPasteSettings() {
+    global inifile
+    return Map("pasteMode",   IniRead(inifile, "dynamic", "paste_mode",    "auto")
+             , "pasteMinLen", IniRead(inifile, "dynamic", "paste_min_len", 30) + 0)
+}
+
+_SavePasteSettings(msg) {
+    global inifile, g_pasteMode, g_pasteMinLen
+    if msg.Has("pasteMode")
+        g_pasteMode := StrLower(msg["pasteMode"])
+    if msg.Has("pasteMinLen")
+        g_pasteMinLen := Integer(msg["pasteMinLen"])
+    IniWrite(g_pasteMode,   inifile, "dynamic", "paste_mode")
+    IniWrite(g_pasteMinLen, inifile, "dynamic", "paste_min_len")
 }
 
 ; ── Per-file settings (@expanto header) ───────────────────────────────────────
@@ -2395,6 +2444,104 @@ FolderDisabled(id) {
     return false
 }
 
+; Hiding works on two levels: a file can be hidden on its own, and a whole
+; folder can be hidden. Both must be cleared for a file to reappear —
+; otherwise "show folder" or a preset that makes files visible looks broken.
+FolderIdOfFile(path) {
+    dir := ""
+    try dir := RegExReplace(path, "\\[^\\]+$", "")
+    return dir = "" ? "" : RegExReplace(dir, "[^a-zA-Z0-9]", "_")
+}
+
+; Drops the given folder IDs from the hidden list. Returns true if anything
+; changed (so the caller knows to save + push new settings).
+HiddenFoldersRemove(ids) {
+    global g_hiddenFolders
+    keep := [], changed := false
+    for h in g_hiddenFolders {
+        drop := false
+        for id in ids
+            if (h = id) {
+                drop := true
+                break
+            }
+        if drop
+            changed := true
+        else
+            keep.Push(h)
+    }
+    if changed
+        g_hiddenFolders := keep
+    return changed
+}
+
+FolderIsHidden(fid) {
+    global g_hiddenFolders
+    for h in g_hiddenFolders
+        if (h = fid)
+            return true
+    return false
+}
+
+; Sets the per-file "hidden" flag on every phrase file in a folder except the
+; given ones — used to push a hidden folder's state down onto its files.
+HideFilesInFolderExcept(folderPath, keepPaths) {
+    if (folderPath = "" || !DirExist(folderPath))
+        return
+    keep := Map()
+    for k in keepPaths
+        keep[StrLower(k)] := true
+    for pattern in ["\*.ahk", "\*.enc"] {
+        Loop Files, folderPath pattern, "R" {
+            if keep.Has(StrLower(A_LoopFileFullPath))
+                continue
+            s := ReadFileSettings(A_LoopFileFullPath)
+            if (!s.Has("hidden") || s["hidden"] = "") {
+                s["hidden"] := "1"
+                WriteFileSettings(A_LoopFileFullPath, s)
+            }
+        }
+    }
+}
+
+; Making individual files visible inside a hidden folder: the folder has to
+; come out of hiding (or the files stay invisible), but its OTHER files must
+; stay hidden — so the folder's hidden-ness is written down onto them first.
+; Returns true when the hidden-folder list changed.
+PromoteFilesOutOfHiddenFolder(paths) {
+    global inifile
+    ids := Map()
+    for p in paths
+        if ((fid := FolderIdOfFile(p)) != "")
+            ids[fid] := true
+    changed := false
+    for fid in ids {
+        if !FolderIsHidden(fid)
+            continue
+        HideFilesInFolderExcept(IniRead(inifile, "PhraseFolders", fid, ""), paths)
+        if HiddenFoldersRemove([fid])
+            changed := true
+    }
+    if changed
+        SaveHiddenFolders()
+    return changed
+}
+
+; Clears the per-file "hidden" setting for every phrase file in a folder.
+UnhideFilesInFolder(folderPath) {
+    if (folderPath = "" || !DirExist(folderPath))
+        return
+    for pattern in ["\*.ahk", "\*.enc"] {
+        Loop Files, folderPath pattern, "R" {
+            s := ReadFileSettings(A_LoopFileFullPath)
+            if (s.Has("hidden") && s["hidden"] != "") {
+                s["hidden"] := ""
+                WriteFileSettings(A_LoopFileFullPath, s)
+            }
+        }
+    }
+}
+
 LoadHiddenFolders() {
     global inifile, g_hiddenFolders
     g_hiddenFolders := []
@@ -2514,14 +2661,22 @@ ParseHotstringFile(path, folderpath, folderid) {
             if RegExMatch(meta, "(?:^|\|)altnames=(.*?)(?=\||$)", &mnames)
                 altNames := MetaToNames(mnames[1])
             ; Collect unknown key=value pairs as custom fields
+            ; Custom (per-file) fields are the meta pairs that aren't built in.
+            ; Split on "|" and then on the FIRST "=" instead of scanning with a
+            ; regex: a key pattern of \w+ silently dropped everything before a
+            ; space ("SID lab" became "lab", so {SID lab} never resolved) and
+            ; also cut values at the first space; \w is ASCII-only in AHK, so
+            ; keys with åäö lost their first letter too.
             customFields := Map()
             knownMeta := Map("cat",1,"lang",1,"comment",1,"tags",1,"disabled",1,"priority",1,"aliases",1,"apps",1,"lastupdated",1,"url",1,"alts",1,"altnames",1)
-            mpos := 1
-            while RegExMatch(meta, "(\w+)=([^|\s;]*)", &mf, mpos) {
-                mpos := mf.Pos + mf.Len
-                cfk := StrLower(mf[1])
-                if !knownMeta.Has(cfk)
-                    customFields[mf[1]] := mf[2]
+            for part in StrSplit(meta, "|") {
+                eq := InStr(part, "=")
+                if !eq
+                    continue
+                cfk := Trim(SubStr(part, 1, eq - 1))
+                if (cfk = "" || knownMeta.Has(StrLower(cfk)))
+                    continue
+                customFields[cfk] := SubStr(part, eq + 1)
             }
         }
 
@@ -2554,6 +2709,27 @@ ParseHotstringFile(path, folderpath, folderid) {
 ; Phrase write-back (extracted from Expanto.ahk)
 ; ══════════════════════════════════════════════════════════════════════════════
 
+; THE line as it goes into the .ahk file. Both write sites in SaveHotstring call
+; this, and so does the editor's status-bar preview — the preview is worthless the
+; moment it becomes a second, drifting copy of the format.
+BuildPhraseLine(options, writtenShort, phrase, category, comment, lang, tags
+              , disabled := 0, aliases := "", apps := "", customFields := ""
+              , url := "", alts := "", altNames := "", preEscaped := false) {
+    global g_ColCol, g_Semi
+    meta := BuildMeta(category, comment, lang, tags, disabled, 0, aliases, apps, customFields, url, alts, altNames)
+    body := preEscaped ? phrase : Escape_CC(phrase)   ; duplicate/move already hold on-disk form
+    return ":" options ":" writtenShort g_ColCol body " " g_Semi " " meta
+}
+
+; Same line, from a phrase as it lives in HS_ALL. Duplicate, move and rename all
+; rewrite phrases they did not author, and each used to assemble the format by hand.
+BuildPhraseLineFromHs(hs, trigger, body, preEscaped := false) {
+    return BuildPhraseLine(hs.options, trigger, body
+        , hs.category, hs.comment, hs.language, ArrJoin(hs.tags, ",")
+        , hs.disabled, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ",")
+        , hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs), preEscaped)
+}
+
 SaveHotstring(filepath, short, options, phrase, category, comment,
               aliases := "", lastupdated := "", apps := "",
               tags := "", lang := "", customMeta := "", disabled := 0, newShort := "", customFields := "", url := "", alts := "", altNames := "") {
@@ -2568,9 +2744,8 @@ SaveHotstring(filepath, short, options, phrase, category, comment,
         line    := lines[i]
         trimmed := Trim(line)
         if (!replaced && RegExMatch(trimmed, "^:([^:]*):([^:]+)::(.*)", &m) && m[2] = short) {
-            meta    := BuildMeta(category, comment, lang, tags, disabled, 0, aliases, apps, customFields, url, alts, altNames)
-            esc     := Escape_CC(phrase)
-            newLines.Push(":" options ":" writtenShort g_ColCol esc " " g_Semi " " meta)
+            newLines.Push(BuildPhraseLine(options, writtenShort, phrase, category, comment
+                        , lang, tags, disabled, aliases, apps, customFields, url, alts, altNames))
             replaced := true
             ; Skip old continuation block if present
             bodyPart := Trim(m[3])
@@ -2587,11 +2762,9 @@ SaveHotstring(filepath, short, options, phrase, category, comment,
         }
     }
 
-    if !replaced {
-        meta := BuildMeta(category, comment, lang, tags, disabled, 0, aliases, apps, customFields, url, alts, altNames)
-        esc  := Escape_CC(phrase)
-        newLines.Push(":" options ":" writtenShort g_ColCol esc " " g_Semi " " meta)
-    }
+    if !replaced
+        newLines.Push(BuildPhraseLine(options, writtenShort, phrase, category, comment
+                    , lang, tags, disabled, aliases, apps, customFields, url, alts, altNames))
 
     joined := ""
     for j, l in newLines
@@ -2779,17 +2952,36 @@ HsAction(hs) => HsFire.Bind(hs)
 ; expansion — used to verify URL-bar (omnibox) detection. Leave false in normal use.
 global g_omniboxDebug := false
 
+; UIA's "focused element" is global and can lag behind or belong to another
+; process — an Edge URL bar focused a moment ago still answers "OmniboxViewViews"
+; while the user types in Notepad. Acting on that sent Ctrl+A into the document
+; and the expansion then overwrote everything ("Guds" came out as "Gud" or "s",
+; with Ctrl left down so the next key opened Spara som). Only trust the class
+; name when a Chromium window is the ACTIVE one.
+_ActiveIsChromium() {
+    static BROWSERS := Map("msedge", 1, "chrome", 1, "brave", 1, "vivaldi", 1
+                         , "opera", 1, "chromium", 1, "msedgewebview2", 1)
+    exe := ""
+    try exe := StrLower(RegExReplace(WinGetProcessName("A"), "i)\.exe$", ""))
+    return BROWSERS.Has(exe)
+}
+
+; Shared IUIAutomation instance — creating one per expansion is expensive.
+_UIA() {
+    static uia := ""
+    if !IsObject(uia)
+        uia := ComObject("{ff48dba4-60ef-4201-aa87-54103eef594e}",   ; CLSID_CUIAutomation
+                         "{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}")    ; IID_IUIAutomation
+    return uia
+}
+
 ; Return the UIA class name of the currently focused element, or "" on failure.
 ; Used to recognise Chromium browsers' URL bar ("OmniboxViewViews"), which has no
 ; child HWND and so is invisible to ControlGetFocus.
 _FocusedUIAClassName() {
-    static uia := ""
     try {
-        if !IsObject(uia)
-            uia := ComObject("{ff48dba4-60ef-4201-aa87-54103eef594e}",   ; CLSID_CUIAutomation
-                             "{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}")    ; IID_IUIAutomation
         el := 0
-        ComCall(8, uia, "ptr*", &el)            ; IUIAutomation::GetFocusedElement
+        ComCall(8, _UIA(), "ptr*", &el)         ; IUIAutomation::GetFocusedElement
         if !el
             return ""
         cls := ""
@@ -2807,90 +2999,337 @@ _FocusedUIAClassName() {
     return ""
 }
 
-HsFire(hs, *) {
-    global g_lastFired, g_lastSent, g_lastCaretBack, g_stepLabels, g_omniboxDebug
-    ec := A_EndChar
-    proceed := true
-    try proceed := CoupleIdentityGuard(hs.filepath)   ; identity-switch safety
-    if (!proceed)
-        return
-    ; App restriction: process name OR title: prefix for window title substring
-    if (hs.apps.Length > 0) {
-        activeExe   := ""
-        activeTitle := ""
-        try activeExe   := StrLower(RegExReplace(WinGetProcessName("A"), "\.exe$", ""))
-        try activeTitle := StrLower(WinGetTitle("A"))
-        allowed := false
-        for entry in hs.apps {
-            e := StrLower(Trim(entry))
-            if SubStr(e, 1, 6) = "title:"
-                allowed := allowed || InStr(activeTitle, SubStr(e, 7))
-            else
-                allowed := allowed || (e = activeExe)
+; The text the focused edit control currently holds (UIA_ValueValuePropertyId), or
+; "" when it exposes no value. Lets us see what Chromium's URL bar really contains
+; after AHK's backspaces have fought with its inline autocomplete.
+_FocusedUIAValue() {
+    try {
+        el := 0
+        ComCall(8, _UIA(), "ptr*", &el)         ; IUIAutomation::GetFocusedElement
+        if !el
+            return ""
+        txt := _UIAElementValue(el)
+        ObjRelease(el)
+        return txt
+    }
+    return ""
+}
+
+; Value property of one UIA element. Split out from _FocusedUIAValue so it can be
+; exercised against an element fetched by HWND instead of by keyboard focus.
+_UIAElementValue(el) {
+    txt := ""
+    try {
+        var := Buffer(24, 0)                    ; VARIANT (x64)
+        ComCall(10, el, "int", 30045, "ptr", var)   ; GetCurrentPropertyValue(UIA_ValueValuePropertyId)
+        if (NumGet(var, 0, "ushort") = 8) {     ; VT_BSTR
+            p := NumGet(var, 8, "ptr")
+            if p
+                txt := StrGet(p, "UTF-16")
         }
-        if !allowed
-            return
+        DllCall("oleaut32\VariantClear", "ptr", var)
     }
-    ; Alternative phrase texts: let the user pick one (popup only when alts exist)
-    raw := PickPhraseText(hs)
-    if (raw = "" && _HsAlts(hs).Length) {
-        ; Picker cancelled — AHK already erased the typed trigger, so restore it
-        SendInput("{Text}" hs.short ec)
+    return txt
+}
+
+_IsOmniboxFocused() => _ActiveIsChromium() && InStr(_FocusedUIAClassName(), "Omnibox") > 0
+
+; What the user actually typed. A phrase's aliases are registered against the SAME
+; bound hs object, so hs.short can be a different string from the trigger that really
+; fired; A_ThisHotkey carries the real one (":*:gud" → "gud"). The omnibox repair
+; counts characters against this, so getting it wrong would trim the wrong amount.
+_FiredTrigger(hs) {
+    t := ""
+    try t := RegExReplace(A_ThisHotkey, "^:[^:]*:", "")
+    return t != "" ? t : hs.short
+}
+
+; Fast typing races the expansion. Everything between the hotstring firing and the
+; text landing — the UIA queries in a browser, ClipboardAll, ClipWait, ^v — takes long
+; enough for a quick typist to get two or three more characters into the app FIRST, so
+; "uppdrag gud" arrived as "uppdrag gsGud rike" or "uppdrag gus riGud". An InputHook
+; without the "V" option blocks text from reaching the window while collecting it, and
+; it always ignores the script's own SendInput — so we can hold the user's keystrokes
+; for the length of the insert and replay them right after, in order.
+;
+; Never wrap a dialog in this: while the guard is up the keyboard is deaf, so the
+; alternative-phrase picker and the dynamic-field prompt must run outside it.
+_TypeGuardStart() {
+    ih := ""
+    try {
+        ih := InputHook()
+        ; MUST be 1, not the default 0: at 0 the hook also collects the script's OWN
+        ; SendInput, so the inserted phrase itself would be captured and replayed —
+        ; every expansion would come out twice. Verified by test, not by reading docs.
+        ih.MinSendLevel   := 1
+        ih.VisibleNonText := true   ; Enter/arrows keep working normally
+        ih.Timeout        := 3      ; a crash between start and stop must not deafen the keyboard
+        ih.Start()
+    }
+    return ih
+}
+
+; Stop the guard and hand back what it held WITHOUT replaying it: the caller decides
+; when those characters should land. They must never be replayed in front of a window
+; the user is about to type into — the picker and the dynamic-field prompt both hand
+; the keyboard back this way and the text waits until after the insert.
+_TypeGuardTake(&ih) {
+    if !IsObject(ih)
+        return ""
+    txt := ""
+    try {
+        txt := ih.Input
+        ih.Stop()
+    }
+    ih := ""
+    return txt
+}
+
+; `ours` is the text this expansion just sent. Belt and braces: MinSendLevel = 1 is
+; supposed to keep the script's own SendInput out of the buffer, and physical keys
+; were verified to still arrive — but the opposite half could not be tested without
+; taking the keyboard away from the user, so guard against it here. If our own text
+; turns up in the buffer, drop it instead of replaying the phrase on top of itself.
+_TypeGuardReplay(held, ours := "") {
+    held := _TypeGuardFilter(held, ours)
+    if (held != "")
+        SendInput("{Text}" held)
+}
+
+_TypeGuardFilter(pending, ours) {
+    if (ours != "" && pending != "" && InStr(pending, ours, true))
+        return StrReplace(pending, ours, , true)
+    return pending
+}
+
+; Chromium's URL bar inline-autocompletes while AHK is erasing the trigger, and a
+; Backspace that lands on the (selected) completion removes the completion instead
+; of a character — so the trigger is often still partly there when we insert. The
+; old remedy was Ctrl+A, but that selected everything typed BEFORE the trigger too
+; and the insert then wiped it: "uppdrag Guds rike" came out as "Guds rike". Clear
+; only what sits AFTER the caret, then remove whatever is left of the trigger.
+_OmniboxPrepare(typed) {
+    global g_dbgPhase
+    t0 := A_TickCount
+    ; Chromium keeps the inline completion SELECTED after the caret, so a plain
+    ; Delete removes exactly that and nothing else. +{End}{Delete} was tried first
+    ; and is too blunt: with the caret parked inside an existing URL it wipes the
+    ; whole rest of the line, and a Shift that survives turns it into Shift+Delete,
+    ; which deletes a Chromium history entry.
+    SendInput("{Delete}")
+    after := _OmniboxSettledValue()
+    k     := (after == "") ? 0 : _OmniboxLeftover(after, typed)
+    g_dbgPhase .= " omni=" (A_TickCount - t0) (after == "" ? "!" : "") "/k" k
+    if (after == "")
+        return                 ; can't read the box, or it never settled — do nothing
+    if (k = 0 || !_OmniboxMayTrim(after, typed, k))
         return
+    ; Ctrl+Backspace deletes a whole WORD. With Ctrl stuck down — exactly what happens
+    ; when a hook eats the key-up of our own ^v — a one-character repair would eat the
+    ; user's words instead. Never guess here.
+    if (GetKeyState("LCtrl") || GetKeyState("RCtrl")
+        || GetKeyState("LCtrl", "P") || GetKeyState("RCtrl", "P"))
+        return
+    SendInput("{BS " k "}")
+    Sleep(20)
+}
+
+; AHK's own trigger backspaces are sent with SendInput and are still in flight when
+; the bound function starts, so the first value we read can show the box as it was
+; BEFORE them — trimming against that would delete characters the user wants to keep
+; ("uppdrag " would become "uppdr"). Read until the box stops changing; if it never
+; settles, return "" so the caller does nothing rather than act on a moving target.
+_OmniboxSettledValue(timeoutMs := 120) {
+    prev     := _FocusedUIAValue()
+    deadline := A_TickCount + timeoutMs
+    while (A_TickCount < deadline) {
+        Sleep(20)
+        cur := _FocusedUIAValue()
+        if (cur == prev)
+            return cur
+        prev := cur
     }
-    ; Pre-substitute stored custom field values
-    unesc := PresubCustomFields(raw, hs.customFields)
-    ; Chromium URL bars autocomplete during AHK's trigger backspaces, leaving residual
-    ; text. The omnibox has no child HWND, so detect it via UIA (locale-independent
-    ; ClassName) and select-all before sending so the replacement overwrites the junk.
-    isOmnibox := InStr(_FocusedUIAClassName(), "Omnibox") > 0
-    if (g_omniboxDebug)
-        MsgBox("UIA-klass: [" _FocusedUIAClassName() "]`n"
-             . "omnibox=" (isOmnibox ? 1 : 0)
-             . "  paste=" (ShouldPasteInsert(unesc) ? 1 : 0)
-             . "  dyn=" (HasDynamicFields(unesc) ? 1 : 0))
-    ; Step-through fill: split phrase on | when step labels are configured
-    if (g_stepLabels.Length > 0 && InStr(unesc, "|")) {
-        if StartStepThrough(hs, unesc)
+    return ""
+}
+
+; Whether a surviving leftover is safe to delete. A whole surviving trigger always
+; is — that is proof the backspaces never landed on characters at all. A partial
+; one only when what sits in front of it is not a letter or digit: "uppdrag g" is
+; plainly what is left of "gud", while the "g" in "og" may be the user's own word.
+_OmniboxMayTrim(after, typed, k) {
+    if (k >= StrLen(typed) || StrLen(after) <= k)
+        return true
+    pre := SubStr(after, StrLen(after) - k, 1)
+    return !RegExMatch(pre, "[0-9A-Za-zÀ-ÖØ-öø-ÿ]")
+}
+
+; How many characters of the trigger are still sitting at the end of the URL bar
+; after AHK's backspaces (0 = none). Longest leftover wins; the comparison is
+; case-insensitive because hotstrings are, so "Gud" matches the trigger "gud".
+_OmniboxLeftover(after, typed) {
+    if (after == "" || typed == "")
+        return 0
+    Loop StrLen(typed) {
+        k := StrLen(typed) - A_Index + 1
+        if (StrLen(after) >= k && SubStr(after, -k) = SubStr(typed, 1, k))
+            return k
+    }
+    return 0
+}
+
+; One line per expansion, written off the critical path so the measurement cannot
+; itself slow down what it measures. It records the trigger, how many characters were
+; inserted, how many the type guard had to hold back, and how long the whole thing
+; took — and deliberately NOTHING else: no phrase text, no window titles, so the file
+; can be read or sent on without carrying anything clinical.
+_InsertLog(trigger, sentLen, heldLen, ms) {
+    global g_insertLog
+    if !g_insertLog
+        return
+    global g_dbgPhase
+    line := FormatTime(, "HH:mm:ss") "  " trigger "  sent=" sentLen
+          . "  held=" heldLen "  " ms " ms" g_dbgPhase
+    SetTimer(_InsertLogWrite.Bind(line), -1)
+}
+
+; Append "label=<elapsed ms>" to the current expansion's breakdown.
+_DbgMark(label, t) {
+    global g_dbgPhase, g_insertLog
+    if g_insertLog
+        g_dbgPhase .= " " label "=" (A_TickCount - t)
+}
+
+_InsertLogWrite(line) {
+    static path := A_AppData "\Expanto\insert_debug.log"
+    try {
+        if (FileExist(path) && FileGetSize(path) > 200000)
+            FileDelete(path)
+        FileAppend(line "`n", path, "UTF-8")
+    }
+}
+
+HsFire(hs, *) {
+    global g_lastFired, g_lastSent, g_lastCaretBack, g_stepLabels, g_omniboxDebug, g_dbgPhase
+    t0    := A_TickCount
+    g_dbgPhase := ""
+    ec    := A_EndChar
+    ; What is really on screen to be replaced — read here, while A_ThisHotkey is fresh.
+    typed := _FiredTrigger(hs) ec
+    ; Hold the user's next keystrokes from the FIRST line, not merely around the send.
+    ; The identity guard's file check, WinGetTitle, the UIA probe and above all
+    ; ClipboardAll are each slow enough for a fast typist to beat the insert into the
+    ; window — "uppdrag gud" arrived as "uppdrag gus rikGud". Everything that opens a
+    ; window of its own hands the keyboard back first (_TypeGuardTake) and the held
+    ; characters wait until after the insert, so their order is preserved either way.
+    guard := _TypeGuardStart()
+    _DbgMark("guard", t0)
+    held  := ""
+    ours  := ""
+    try {
+        proceed := true
+        tStage := A_TickCount
+        try proceed := CoupleIdentityGuard(hs.filepath)   ; identity-switch safety
+        _DbgMark("cig", tStage)
+        if (!proceed)
             return
-    }
-    if (HasDynamicFields(unesc) || ShouldPasteInsert(unesc)) {
-        g_lastSent := "", g_lastCaretBack := 0
-        res := ExpandDynamic(unesc, hs.filepath, hs.short)
-        sentEc := ""
-        if (res.ok) {
-            ; Conform case to what was typed (standard AHK behaviour) for paste/dynamic
-            ; inserts too — not just the SendInput path below.
-            noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
-            if (isOmnibox) {     ; clear URL-bar autocomplete residue before insert
-                SendInput("^a")
-                _ReleaseCtrl()
-                Sleep(20)
+        ; App restriction: process name OR title: prefix for window title substring
+        if (hs.apps.Length > 0) {
+            activeExe   := ""
+            activeTitle := ""
+            try activeExe   := StrLower(RegExReplace(WinGetProcessName("A"), "\.exe$", ""))
+            try activeTitle := StrLower(WinGetTitle("A"))
+            allowed := false
+            for entry in hs.apps {
+                e := StrLower(Trim(entry))
+                if SubStr(e, 1, 6) = "title:"
+                    allowed := allowed || InStr(activeTitle, SubStr(e, 7))
+                else
+                    allowed := allowed || (e = activeExe)
             }
-            SendExpanded(noConform ? res.text : ConformCase(res.text, hs.short, ec))
-            ; Reproduce the ending char AHK swallowed — function hotstrings don't auto-send
-            ; it. Skip when the caret was repositioned ({cursor}) so it can't land mid-text.
-            sentEc := (ec != "" && !InStr(hs.options, "O", true) && g_lastCaretBack = 0) ? ec : ""
+            if !allowed
+                return
+        }
+        ; Alternative phrase texts: let the user pick one (popup only when alts exist)
+        if (_HsAlts(hs).Length)
+            held .= _TypeGuardTake(&guard)      ; the picker is a window: it needs the keyboard
+        raw := PickPhraseText(hs)
+        if (raw = "" && _HsAlts(hs).Length) {
+            ; Picker cancelled — AHK already erased the typed trigger, so restore it
+            SendInput("{Text}" typed)
+            ours := typed
+            return
+        }
+        if !IsObject(guard)
+            guard := _TypeGuardStart()
+        ; Pre-substitute stored custom field values
+        unesc := PresubCustomFields(raw, hs.customFields)
+        if (g_omniboxDebug)
+            MsgBox("UIA-klass: [" _FocusedUIAClassName() "]`n"
+                 . "omnibox=" (_IsOmniboxFocused() ? 1 : 0)
+                 . "  paste=" (ShouldPasteInsert(unesc) ? 1 : 0)
+                 . "  dyn=" (HasDynamicFields(unesc) ? 1 : 0))
+        ; Step-through fill: split phrase on | when step labels are configured
+        if (g_stepLabels.Length > 0 && InStr(unesc, "|")) {
+            held .= _TypeGuardTake(&guard)      ; step-through runs its own popup and hotkeys
+            if StartStepThrough(hs, unesc)
+                return
+            guard := _TypeGuardStart()
+        }
+        if (HasDynamicFields(unesc) || ShouldPasteInsert(unesc)) {
+            g_lastSent := "", g_lastCaretBack := 0
+            if HasDynamicFields(unesc)          ; the field prompt needs the keyboard
+                held .= _TypeGuardTake(&guard)
+            tStage := A_TickCount
+            res := ExpandDynamic(unesc, hs.filepath, hs.short)
+            _DbgMark("dyn", tStage)
+            if !IsObject(guard)
+                guard := _TypeGuardStart()
+            sentEc := ""
+            if (res.ok) {
+                ; Conform case to what was typed (standard AHK behaviour) for paste/dynamic
+                ; inserts too — not just the SendInput path below.
+                noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
+                tStage := A_TickCount
+                omni := _IsOmniboxFocused()
+                _DbgMark("probe", tStage)
+                if omni                  ; clear URL-bar autocomplete residue before insert
+                    _OmniboxPrepare(typed)
+                tStage := A_TickCount
+                SendExpanded(noConform ? res.text : ConformCase(res.text, hs.short, ec))
+                _DbgMark("send", tStage)
+                ; Reproduce the ending char AHK swallowed — function hotstrings don't auto-send
+                ; it. Skip when the caret was repositioned ({cursor}) so it can't land mid-text.
+                sentEc := (ec != "" && !InStr(hs.options, "O", true) && g_lastCaretBack = 0) ? ec : ""
+                if (sentEc != "")
+                    SendInput("{Text}" sentEc)
+                ours := g_lastSent sentEc
+            }
+            g_lastFired := { hs: hs, sent: g_lastSent, endChar: sentEc, caretBack: g_lastCaretBack, undoable: (g_lastSent != "") }
+            RecordUsage(hs.id)
+            SetTimer(ShowUndoPopup, -300)
+        } else {
+            noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
+            out := noConform ? unesc : ConformCase(unesc, hs.short, ec)
+            sentEc := (ec != "" && !InStr(hs.options, "O", true)) ? ec : ""
+            tStage := A_TickCount
+            omni := _IsOmniboxFocused()
+            _DbgMark("probe", tStage)
+            if omni                  ; clear URL-bar autocomplete residue before insert
+                _OmniboxPrepare(typed)
+            tStage := A_TickCount
+            SendInput("{Text}" out)
+            _DbgMark("send", tStage)
             if (sentEc != "")
                 SendInput("{Text}" sentEc)
+            ours := out sentEc
+            g_lastFired := { hs: hs, sent: out, endChar: sentEc, caretBack: 0, undoable: true }
+            RecordUsage(hs.id)
+            SetTimer(ShowUndoPopup, -300)
         }
-        g_lastFired := { hs: hs, sent: g_lastSent, endChar: sentEc, caretBack: g_lastCaretBack, undoable: (g_lastSent != "") }
-        RecordUsage(hs.id)
-        SetTimer(ShowUndoPopup, -300)
-    } else {
-        noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
-        out := noConform ? unesc : ConformCase(unesc, hs.short, ec)
-        if (isOmnibox) {     ; clear URL-bar autocomplete residue before insert
-            SendInput("^a")
-            Sleep(20)
-        }
-        SendInput("{Text}" out)
-        sentEc := (ec != "" && !InStr(hs.options, "O", true)) ? ec : ""
-        if (sentEc != "")
-            SendInput("{Text}" sentEc)
-        g_lastFired := { hs: hs, sent: out, endChar: sentEc, caretBack: 0, undoable: true }
-        RecordUsage(hs.id)
-        SetTimer(ShowUndoPopup, -300)
+    } finally {
+        held .= _TypeGuardTake(&guard)
+        _TypeGuardReplay(held, ours)
+        _InsertLog(typed, StrLen(ours), StrLen(held), A_TickCount - t0)
     }
     _MaybePromptUrl(hs)
 }
@@ -2938,9 +3377,20 @@ _CollectManualDynFields(text) {
 PresubCustomFields(text, customFields) {
     if !IsObject(customFields)
         return text
-    ; Replace {key=value} placeholders with embedded value directly
+    ; Replace {key=value} placeholders with embedded value directly.
+    ; The key class must allow spaces and non-ASCII letters (\w is ASCII-only),
+    ; or {SID lab=…} is never recognised; "=" itself is excluded so the first
+    ; "=" still separates key from value.
     local mf, pos := 1
-    while RegExMatch(text, "\{(\w+)=([^}]*)\}", &mf, pos) {
+    while RegExMatch(text, "\{([^}=]+)=([^}]*)\}", &mf, pos) {
+        ; A key that is not a plain word (i.e. it has spaces or non-ASCII
+        ; letters) counts as a field ONLY when the phrase really has one by
+        ; that name. Without this, braces around code or markup — {key = val},
+        ; {font-size=12px} — would be collapsed to their right-hand side.
+        if (!RegExMatch(mf[1], "^\w+$") && !customFields.Has(mf[1])) {
+            pos := mf.Pos + mf.Len
+            continue
+        }
         ; Choice fields are prompted by ExpandDynamic, not substituted: {name=[a/b]}
         ; always, and the bracket-less {name=a/b} unless the key is a real stored
         ; custom field (whose value may legitimately contain slashes, e.g. a path).
@@ -2969,12 +3419,38 @@ ShouldPasteInsert(text) {
 }
 
 PasteText(text) {
-    saved := ClipboardAll()
+    global g_dbgPhase, g_clipSeq, g_clipSaved, g_clipText
+    t0    := A_TickCount
+    ; Reuse the cached backup only when the sequence number is untouched AND the text
+    ; form still matches. The sequence number alone leaves a race: if another app wrote
+    ; the clipboard in the instant between our restore and our reading the number, we
+    ; would later restore OUR snapshot over THEIR content.
+    reuse := (g_clipSeq != 0 && _ClipSeq() = g_clipSeq && g_clipSaved != ""
+              && A_Clipboard == g_clipText)
+    tChk  := A_TickCount
+    saved := reuse ? g_clipSaved : ClipboardAll()
+    t1    := A_TickCount
     A_Clipboard := text
-    if ClipWait(1) {
-        SendInput("^v")
-        _ReleaseCtrl()   ; guard against a CapsLock→Ctrl remap leaving Ctrl stuck after the paste
+    ok := ClipWait(0.6)
+    t2 := A_TickCount
+    g_dbgPhase .= " clipchk=" (tChk - t0) " clipsave=" (t1 - tChk) (reuse ? "r" : "")
+                . " clipwait=" (t2 - t1) (ok ? "" : "!")
+    if !ok {
+        ; The clipboard never took our text (another app is holding it open). Typing is
+        ; slower but always available — better than silently inserting nothing.
+        _SendTextDirect(text)
+        return
     }
+    t3 := A_TickCount
+    SendInput("^v")
+    ; Release Ctrl HERE, synchronously. Deferring it with SetTimer(-1) was tried as an
+    ; optimisation and reopened the bug it was meant to fix: the timer fires after the
+    ; caller's type guard has come down, so the user's next key lands in the window
+    ; where Ctrl may still be held — Ctrl+S, Spara som. Inside the guard the keyboard is
+    ; held, so those ~100 ms cost the user nothing but a slightly later insert; nothing
+    ; they type is lost. Correctness beats latency here.
+    _ReleaseCtrl()
+    _DbgMark("ctrlv", t3)
     ; Slow paste consumers (Word with add-ins etc.) can read the clipboard well
     ; after ^v was sent — restoring after only 500 ms made them paste the OLD
     ; clipboard intermittently. Wait longer, and only restore while the
@@ -2983,20 +3459,59 @@ PasteText(text) {
 }
 
 _RestorePastedClipboard(saved, ourText) {
+    global g_clipSeq, g_clipSaved, g_clipText
     try {
-        if (A_Clipboard != ourText)
-            return   ; the user copied something new meanwhile — leave it alone
+        if (A_Clipboard != ourText) {
+            g_clipSeq := 0, g_clipSaved := "", g_clipText := ""   ; user copied — cache void
+            return                                                ; leave their clipboard alone
+        }
     }
     _RestoreClipboard(saved)
+    ; Remember the restored snapshot against the clipboard's sequence number, so the
+    ; next paste can skip ClipboardAll while nothing else has touched the clipboard.
+    ; Big payloads (images, spreadsheet ranges) are not cached — holding those in
+    ; memory costs more than re-reading them on the rare occasion they are current.
+    try {
+        if (saved != "" && saved.Size <= 2000000) {
+            g_clipSaved := saved
+            g_clipText  := A_Clipboard
+            g_clipSeq   := _ClipSeq()
+        } else {
+            g_clipSeq := 0, g_clipSaved := "", g_clipText := ""
+        }
+    }
+}
+
+_ClipSeq() {
+    n := 0
+    try n := DllCall("GetClipboardSequenceNumber", "uint")
+    return n
 }
 
 ; A CapsLock→Ctrl remap (or any external keyboard hook) can swallow the key-up half of a
-; synthetic Ctrl-combo (^v / ^a), leaving Ctrl logically stuck down after an insert — which
-; then breaks every plain hotkey (e.g. Shift+Space to open the GUI no longer matches, since
-; AHK now sees Ctrl+Shift+Space). Clear it with an explicit Ctrl-up, but ONLY when Ctrl is
-; actually still down: firing a spurious Ctrl-up on every paste could itself desync a
-; bidirectional CapsLock↔Ctrl remap. {Blind} stops AHK from re-adding modifiers.
-_ReleaseCtrl() => _ReleaseStuckMods()
+; synthetic Ctrl-combo (^v), leaving Ctrl stuck down after an insert — which then breaks
+; every plain hotkey (Shift+Space no longer opens the GUI, since AHK now sees
+; Ctrl+Shift+Space) and turns the next character the user types into a Ctrl-combo. With
+; paste_mode=always every single expansion goes through ^v, so this fires constantly:
+; typing "uppdrag Guds" in Edge's URL bar ended in Ctrl+S and the Spara som dialog.
+; _ReleaseStuckMods only helps when AHK's OWN logical state shows Ctrl down; when the
+; key-up is eaten further down the hook chain AHK believes Ctrl is up while the target
+; app still holds it, and no GetKeyState check can see that. A key-up for a key that is
+; not down is a no-op, so send it unconditionally — unless the user is physically holding
+; Ctrl. Only Ctrl: a stray Alt-up can pop up the menu bar in some apps.
+; Measured on this machine: every injected key event costs ~50 ms, because it has to
+; travel a hook chain of eight AutoHotkey scripts plus HotKeyServiceUWP. So the number
+; of events matters more than anything else here. An earlier version of this function
+; sent five (two {Blind} sends plus three raw key-ups) and added ~250 ms to every
+; paste. Two raw key-ups is enough: they carry no AutoHotkey marker, so no hook in the
+; chain treats them as script input and swallows them — which is what made the
+; AHK-level sends unreliable in the first place.
+_ReleaseCtrl() {
+    if (GetKeyState("LCtrl", "P") || GetKeyState("RCtrl", "P"))
+        return                      ; the user is really holding it — leave it alone
+    DllCall("keybd_event", "uchar", 0xA2, "uchar", 0, "uint", 2, "ptr", 0)  ; VK_LCONTROL up
+    DllCall("keybd_event", "uchar", 0xA3, "uchar", 0, "uint", 2, "ptr", 0)  ; VK_RCONTROL up
+}
 
 ; Release any modifier that is logically stuck down without being physically
 ; held — the cause of "Shift+Space suddenly stops opening the GUI": AHK then
@@ -3321,9 +3836,14 @@ CoupleIdentityGuard(filepath) {
 
 ExpandDynamic(phrase, filepath := "", trigger := "", forceMode := "") {
     global g_dynMode, g_dynAppModes, g_coupleLastTick
-    phrase := StrReplace(phrase, "{date}",      FormatTime(, "yyyy-MM-dd"))
-    phrase := StrReplace(phrase, "{time}",      FormatTime(, "HH:mm"))
-    phrase := StrReplace(phrase, "{clipboard}", A_Clipboard)
+    phrase := StrReplace(phrase, "{date}", FormatTime(, "yyyy-MM-dd"))
+    phrase := StrReplace(phrase, "{time}", FormatTime(, "HH:mm"))
+    ; Only touch the clipboard when the phrase actually asks for it. Reading
+    ; A_Clipboard forces the OS to render CF_UNICODETEXT, which costs real time when
+    ; something large is on the clipboard and can block outright while another app
+    ; holds it open — paid on EVERY expansion before this check existed.
+    if InStr(phrase, "{clipboard}")
+        phrase := StrReplace(phrase, "{clipboard}", A_Clipboard)
 
     reserved := Map("date", 1, "time", 1, "clipboard", 1, "cursor", 1)
     fields := [], seen := Map(), pos := 1
@@ -3899,6 +4419,41 @@ StepActive() {
     return g_stepIdx > 0
 }
 
+_StepCtx(*) => StepActive()
+
+; The popup's ◄ Föregående / Nästa ► buttons get keyboard twins: the step key
+; moves forward, Shift+step key steps back (Ctrl+step key when the step key
+; already uses Shift). Registered under a StepActive context so the extra
+; combination only exists while a step-through is running.
+StepPrevKeyFor(stepKey) {
+    if (stepKey = "")
+        return ""
+    if !InStr(stepKey, "+")
+        return "+" stepKey
+    return InStr(stepKey, "^") ? "" : "^" stepKey
+}
+
+ApplyStepPrevHotkey() {
+    global g_stepKey, g_stepPrevKey
+    newKey := StepPrevKeyFor(g_stepKey)
+    if (newKey = g_stepPrevKey)
+        return
+    if (g_stepPrevKey != "") {
+        HotIf(_StepCtx)
+        try Hotkey(g_stepPrevKey, "Off")
+        HotIf()
+    }
+    g_stepPrevKey := ""
+    if (newKey = "")
+        return
+    HotIf(_StepCtx)
+    try {
+        Hotkey(newKey, (*) => _StepPopupPrev(), "On")
+        g_stepPrevKey := newKey
+    }
+    HotIf()
+}
+
 InitStepKey() {
     global g_stepKey
     if (g_stepKey = "")
@@ -3909,6 +4464,7 @@ InitStepKey() {
     } catch {
         g_stepKey := ""
     }
+    ApplyStepPrevHotkey()
 }
 
 ; Split a phrase into segments {header, body}.
@@ -3976,25 +4532,26 @@ SplitPhraseIntoSegments(text) {
             paragraphs.Push(Trim(chunk, " `t`r"))
 
     if (paragraphs.Length >= 2) {
+        ; Paragraph steps are pieces of ONE running text, so nothing may be
+        ; dropped and the blank line between them has to come back on
+        ; insertion. A heading-looking first line is only used as the popup's
+        ; title ("hdrInBody") — it stays part of the inserted text, or a
+        ; paragraph starting with e.g. "Sammanfattning:" or a "----" rule
+        ; would silently lose its first line.
         segs := []
-        for para in paragraphs {
-            lines := StrSplit(para, "`n", "`r")
-            header := "", bodyStart := 1
+        for i, para in paragraphs {
+            lines  := StrSplit(para, "`n", "`r")
+            header := ""
             if (lines.Length >= 1) {
                 firstLine := Trim(lines[1])
                 nextLine  := lines.Length >= 2 ? Trim(lines[2]) : ""
-                if IsSegmentHeader(firstLine, nextLine) {
+                if IsSegmentHeader(firstLine, nextLine)
                     header := ExtractSegmentHeader(firstLine, nextLine)
-                    bodyStart := (nextLine != "" && RegExMatch(nextLine, "^[=\-]{2,}$")) ? 3 : 2
-                }
             }
-            bodyLines := []
-            k := bodyStart
-            while (k <= lines.Length)
-                bodyLines.Push(lines[k++])
-            body := Trim(ArrJoin(bodyLines, "`n"))
-            if (header != "" || body != "")
-                segs.Push(Map("header", header, "body", body))
+            body := Trim(para, " `t`r`n")
+            if (body != "")
+                segs.Push(Map("header", header, "body", body
+                            , "hdrInBody", 1, "sep", i > 1 ? "`n`n" : ""))
         }
         if (segs.Length >= 2)
             return segs
@@ -4037,6 +4594,10 @@ _BuildSegmentText(seg) {
     global g_stepKeepHeaders
     header := seg["header"]
     body   := seg["body"]
+    ; "hdrInBody": the heading line is already part of the body (paragraph
+    ; steps) — it must never be dropped, nor repeated on top of itself.
+    if (seg.Has("hdrInBody") && seg["hdrInBody"])
+        return body
     if (g_stepKeepHeaders && header != "")
         return header ":`n" body
     return body
@@ -4044,8 +4605,21 @@ _BuildSegmentText(seg) {
 
 ; Insert one step segment: resolve its dynamic fields first (always via the
 ; dialog — inline caret placement doesn't fit the step flow), then type it.
+; What to put in front of a step. Nothing before the first one; otherwise the
+; separator the split recorded (a blank line for paragraph steps) or, when the
+; user ticks "Behåll styckemellanrum", a blank line for label/pipe steps too.
+_StepSeparatorFor(seg, idx) {
+    global g_stepKeepSpacing
+    if (idx <= 1)
+        return ""
+    own := seg.Has("sep") ? seg["sep"] : ""
+    if (!g_stepKeepSpacing)
+        return ""
+    return own != "" ? own : "`n`n"
+}
+
 _StepInsertSegment(seg) {
-    global g_stepHs
+    global g_stepHs, g_pasteMode, g_stepIdx
     txt := _BuildSegmentText(seg)
     fp := (IsSet(g_stepHs) && IsObject(g_stepHs)) ? g_stepHs.filepath : ""
     tr := (IsSet(g_stepHs) && IsObject(g_stepHs)) ? g_stepHs.short    : ""
@@ -4056,7 +4630,62 @@ _StepInsertSegment(seg) {
             return
         txt := StrReplace(res.text, "{cursor}", "")
     }
-    _SendTextDirect(txt)
+    if (txt = "")
+        return
+    ; Wait for the hotkey's own modifiers, then PASTE rather than type. Typing
+    ; a step with per-character SendInput proved fragile on a machine running
+    ; several keyboard hooks: a still-held Alt ate the first character, and an
+    ; interrupted send produced runaway repeats ("nnnnnn…"). Paste is atomic —
+    ; it is also what the ordinary Ctrl+Enter insert uses, which never garbled.
+    _WaitModifiersReleased()
+    ; The blank line between steps goes in as real Enter keystrokes, not as part
+    ; of the pasted text. Notepad kept the leading newlines; Melior's note editor
+    ; trims them off a paste, which is why the spacing kept vanishing there. The
+    ; small sleeps are for that same editor — it drops keys sent back to back.
+    sep := _StepSeparatorFor(seg, g_stepIdx)
+    if (sep != "") {
+        StrReplace(sep, "`n", "", , &nl)
+        loop nl {
+            SendInput("{Enter}")
+            Sleep 15
+        }
+        Sleep 20
+    }
+    if (g_pasteMode != "never")
+        PasteText(txt)
+    else
+        _SendTextDirect(txt)
+}
+
+; A hotkey such as Alt+V is still physically held when the insert starts, and
+; with Alt down the first character reaches the app as a menu accelerator
+; (Alt+B) and is swallowed — "Bästa kollega," arrived as "ästa kollega,".
+; Wait (bounded) for the user to let go before typing.
+_WaitModifiersReleased(timeoutMs := 700) {
+    static MODS := ["LAlt", "RAlt", "LCtrl", "RCtrl", "LShift", "RShift", "LWin", "RWin"]
+    deadline := A_TickCount + timeoutMs
+    loop {
+        held := false
+        for k in MODS
+            if (GetKeyState(k, "P") || GetKeyState(k)) {   ; physical AND logical
+                held := true
+                break
+            }
+        if !held {
+            Sleep 15   ; let the app process the key-up before the text arrives
+            return true
+        }
+        if (A_TickCount >= deadline)
+            break
+        Sleep 10
+    }
+    ; Timed out. A modifier that is logically down without being physically
+    ; held is stuck (other scripts' hooks can swallow a key-up) — release it,
+    ; or every insert from here on loses its first character.
+    for k in MODS
+        if (GetKeyState(k) && !GetKeyState(k, "P"))
+            SendInput("{Blind}{" k " Up}")
+    return false
 }
 
 _SendTextDirect(text) {
@@ -4096,11 +4725,22 @@ _DirectSendExpanded(text) {
     _ReleaseStuckMods()   ; synthetic sends can leave a modifier logically stuck
 }
 
+; True when the split recorded blank lines between steps (the paragraph split
+; does; the label and pipe splits do not, because those steps are meant for
+; separate form fields where extra Enters would be wrong).
+_SegsHaveSpacing(segs) {
+    for s in segs
+        if (s.Has("sep") && s["sep"] != "")
+            return true
+    return false
+}
+
 StartStepThrough(hs, rawPhrase) {
-    global g_stepSegments, g_stepIdx, g_stepHs, g_stepKey
+    global g_stepSegments, g_stepIdx, g_stepHs, g_stepKey, g_stepKeepSpacing
     segs := SplitPhraseIntoSegments(rawPhrase)
     if (segs.Length < 2)
         return false
+    g_stepKeepSpacing := _SegsHaveSpacing(segs)   ; popup checkbox can override
     g_stepSegments := segs
     g_stepIdx      := 1
     g_stepHs       := hs
@@ -4192,8 +4832,13 @@ _StepToggleKeepHeaders() {
     g_stepKeepHeaders := g_stepPopup["ChkKeepHeaders"].Value = 1
 }
 
+_StepToggleKeepSpacing() {
+    global g_stepPopup, g_stepKeepSpacing
+    g_stepKeepSpacing := g_stepPopup["ChkKeepSpacing"].Value = 1
+}
+
 CreateStepPopup() {
-    global g_stepPopup, g_stepKeepHeaders
+    global g_stepPopup, g_stepKeepHeaders, g_stepKeepSpacing
     if IsSet(g_stepPopup) && IsObject(g_stepPopup)
         return
     pg := Gui("-Caption +AlwaysOnTop +ToolWindow +E0x08000000", "ExpantoStep")
@@ -4210,6 +4855,9 @@ CreateStepPopup() {
     cb := pg.AddCheckBox("xm y+6 cCCCCCC vChkKeepHeaders", "Behåll styckerubriker")
     cb.Value := g_stepKeepHeaders ? 1 : 0
     cb.OnEvent("Click", (*) => _StepToggleKeepHeaders())
+    cs := pg.AddCheckBox("xm y+4 cCCCCCC vChkKeepSpacing", "Behåll styckemellanrum")
+    cs.Value := g_stepKeepSpacing ? 1 : 0
+    cs.OnEvent("Click", (*) => _StepToggleKeepSpacing())
     pg.AddText("vStepHint c5C6370 w320 y+6 h16", "")
     g_stepPopup := pg
 }
@@ -4239,9 +4887,16 @@ ShowStepPopup() {
     }
     ddl.Choose(nextIdx)
     ; Update hint with current key
-    keyDisp := g_hkInsertStep != "" ? g_hkInsertStep : "InsertStep-tangent"
-    g_stepPopup["StepHint"].Value := "Tryck " keyDisp " för nästa  ·  Esc avbryt"
+    ; The hint is where the keyboard twins of the buttons are discovered
+    global g_stepKey, g_stepPrevKey
+    keyDisp := g_stepKey != "" ? g_stepKey
+             : (g_hkInsertStep != "" ? g_hkInsertStep : "InsertStep-tangent")
+    g_stepPopup["StepHint"].Value := (g_stepPrevKey != ""
+        ? keyDisp " nästa  ·  " g_stepPrevKey " föregående  ·  Esc avbryt"
+        : "Tryck " keyDisp " för nästa  ·  Esc avbryt")
     g_stepPopup["BtnStepPrev"].Enabled := (nextIdx > 1)
+    global g_stepKeepSpacing
+    try g_stepPopup["ChkKeepSpacing"].Value := g_stepKeepSpacing ? 1 : 0
     if CaretGetPos(&cx, &cy)
         g_stepPopup.Show("x" cx " y" (cy + 24) " NoActivate AutoSize")
     else {
