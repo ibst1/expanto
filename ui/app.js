@@ -21,13 +21,34 @@ const LANG = {
     'tt.clearSearch': 'Rensa sök',
     'tt.compact': 'Kompakt läge',
     'tt.toggleSidebar': 'Dölj sidopanel',
+    'tt.showSidebar': 'Visa sidopanel',
     'tt.fileSettings': 'Filinställningar för vald fil',
+    'tt.viewMenu': 'Vyalternativ (radhöjd, kompakt läge, sidopanel)',
+    'tt.moreFields': 'Visa fler fält (Ctrl+M)',
+    'view.previewLines': '≣ Rader per fras',
+    'view.compact': '≡ Kompakt läge',
+    'view.sidebar': 'Sidopanel',
+    'view.tools': '🛠 Verktyg',
+    'tt.tools': 'Underhållsverktyg: AI-städning, dubbletter, ångra',
+    'field.more': 'Mer',
+    'use.title': 'Används för',
+    'use.hs': 'Hotstrings (expandera vid skrivning)',
+    'use.hintT': 'Trigger-popup',
+    'use.hintP': 'Fras-popup',
+    'use.none': 'inget',
+    'use.hs.tip': 'Filens fraser expanderar när du skriver deras trigger.\nAv = fraserna finns kvar men utlöses inte.',
+    'use.hintT.tip': 'Filens triggers föreslås i popupen medan du skriver början av en trigger.',
+    'use.hintP.tip': 'Filens frastexter föreslås i popupen när det du skriver finns i själva frasen.',
+    'enc.desc': 'Krypterade frasfiler ligger i samma frasmappar som vanliga .ahk-filer.',
     'tt.dragResize': 'Dra för att ändra bredd',
     'tt.swap': 'Byt plats på trigger ↔ fras',
     'tt.deselectAll': 'Avmarkera alla',
     'tt.add': 'Lägg till',
     'nav.settingsTip': 'Inställningar',
-    'btn.saveReload': 'Spara & ladda om',
+    'tip.saved': '✓ Sparat',
+    'status.count': (n, tot) => n === tot ? `${n} fraser` : `${n} av ${tot} fraser`,
+    'status.clearFilters': '✕ Rensa alla filter',
+    'status.filtersCleared': 'Filter rensade',
     'help.title': 'Hjälp',
     // — Frasmappar —
     'fr.more': 'Fler ordlistor från wordlists-repot',
@@ -44,6 +65,7 @@ const LANG = {
     'wl.none': 'Inga ordlistor hittades.',
     'wl.fetchErr': m => `Kunde inte hämta lista: ${m}`,
     'folders.desc': 'Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.',
+    'folders.active': 'Aktiva frasmappar',
     'folders.add': '＋ Lägg till mapp',
     'folders.delTip': 'Ta bort mapp',
     'folders.openExplorer': 'Öppna mappen i Utforskaren',
@@ -123,12 +145,13 @@ const LANG = {
     'dynApp.appPh': 'process eller title:del',
     'dyn.stepLabels': 'Stegvis infogning — fältetiketter <span style="font-weight:400;text-transform:none">(vitlista, avgränsa med |)</span>',
     'dyn.stepLabels.desc': 'Frasen delas vid dessa etiketter; varje fält infogas separat och endast värdet klistras in (etiketten visas i panelen som guide).',
-    'dyn.pasteMode': 'Infogningsmetod',
-    'dyn.paste.auto': 'Auto — urklipp för långa texter, tangenter för korta',
-    'dyn.paste.always': 'Alltid urklipp (snabbt)',
-    'dyn.paste.never': 'Alltid tangenter (långsamt)',
-    'dyn.pasteMinLen': 'Urklippsgräns (tecken)',
-    'dyn.pasteMinLen.desc': 'Texter kortare än detta skickas tecken för tecken; längre klistras in via urklipp.',
+    'gen.pasteMode': 'Infogningsmetod',
+    'gen.paste.auto': 'Auto — urklipp för långa texter, tangenter för korta',
+    'gen.paste.always': 'Alltid urklipp',
+    'gen.paste.never': 'Alltid tangenter',
+    'gen.pasteMode.desc': 'Tangenter skickas som ett enda block och är oftast snabbast. Urklipp kräver Ctrl+V, vilket tar märkbart längre tid när flera program avlyssnar tangentbordet — men klarar mycket långa texter bättre.',
+    'gen.pasteMinLen': 'Urklippsgräns (tecken)',
+    'gen.pasteMinLen.desc': 'Texter kortare än detta skrivs tecken för tecken; längre klistras in via urklipp. Högre värde = mindre urklippsanvändning.',
     // — AI-sidan —
     'ai.enable': 'Aktivera AI-funktioner',
     'ai.apiKey': 'API-nyckel',
@@ -280,8 +303,23 @@ const LANG = {
     'ctx.hideFile': 'Dölj fil', 'ctx.showFile': 'Visa fil',
     'ctx.openFolder': 'Öppna mapp i Utforskaren',
     'ctx.hideFolder': 'Dölj mapp', 'ctx.showFolder': 'Visa mapp',
-    'ctx.preset.spellcheck': 'Stavningskontroll', 'ctx.preset.abbrev': 'Förkortningar', 'ctx.preset.phrases': 'Långa fraser',
+    'ctx.preset.spellcheck': 'Ordlista / autokorrigering',
+    'ctx.preset.abbrev': 'Förkortningar',
+    'ctx.preset.phrases': 'Fraser',
+    'ctx.preset.spellcheck.tip':
+      'För stora ordlistor, t.ex. autokorrigering: orden rättas medan du skriver, '
+      + 'men de fyller inte popuperna.\n\nSätter: Hotstrings PÅ · Trigger-popup AV · Fras-popup AV\n'
+      + 'Filen döljs i fillistan (visa den igen med "Visa dolda").',
+    'ctx.preset.abbrev.tip':
+      'För förkortningar: expanderar när du skriver och går att söka fram i fras-popupen.'
+      + '\n\nSätter: Hotstrings PÅ · Trigger-popup AV · Fras-popup PÅ\n'
+      + 'Filen döljs i fillistan (visa den igen med "Visa dolda").',
+    'ctx.preset.phrases.tip':
+      'För längre fraser du vill bläddra bland: expanderar och föreslås i båda popuperna.'
+      + '\n\nSätter: Hotstrings PÅ · Trigger-popup PÅ · Fras-popup PÅ\n'
+      + 'Filen visas i fillistan.',
     'toast.preset': name => `"${name}" tillämpad`,
+    'toast.presetHidden': name => `"${name}" tillämpad — filen är nu dold i listan (visas med "Visa dolda")`,
     'ctx.backups': 'Säkerhetskopior…',
     'ctx.encryptFile': 'Kryptera (.ahk → .enc)', 'ctx.decryptFile': 'Dekryptera (.enc → .ahk)',
     'ctx.presets': 'Standardinställningar', 'ctx.details': 'Detaljerade inställningar',
@@ -337,7 +375,6 @@ const LANG = {
     'dynApp.empty': 'Inga app-specifika lägen inställda.',
     'dynApp.mode.auto': 'Standard', 'dynApp.mode.inline': 'Inline',
     'dynApp.mode.dialog': 'Dialog', 'dynApp.mode.off': 'Av',
-    'compound.saved': 'Sparat.',
     'ai.batch.progress': (d,t) => `✨ AI-taggar ${d}/${t}…`, 'ai.batch.idle': '✨ AI-tagga synliga fraser',
     'dtm.dup': 'Duplicera till', 'dtm.move': 'Flytta till',
     'recent.off': '🕐 Senast', 'recent.used': '🕐 Använda', 'recent.edited': '🕐 Redigerade',
@@ -423,13 +460,34 @@ const LANG = {
     'tt.clearSearch': 'Clear search',
     'tt.compact': 'Compact mode',
     'tt.toggleSidebar': 'Hide sidebar',
+    'tt.showSidebar': 'Show sidebar',
     'tt.fileSettings': 'File settings for the selected file',
+    'tt.viewMenu': 'View options (row height, compact mode, sidebar)',
+    'tt.moreFields': 'Show more fields (Ctrl+M)',
+    'view.previewLines': '≣ Lines per phrase',
+    'view.compact': '≡ Compact mode',
+    'view.sidebar': 'Sidebar',
+    'view.tools': '🛠 Tools',
+    'tt.tools': 'Maintenance tools: AI clean-up, duplicates, undo',
+    'field.more': 'More',
+    'use.title': 'Used for',
+    'use.hs': 'Hotstrings (expand while typing)',
+    'use.hintT': 'Trigger popup',
+    'use.hintP': 'Phrase popup',
+    'use.none': 'nothing',
+    'use.hs.tip': 'The file\'s phrases expand when you type their trigger.\nOff = the phrases stay but never fire.',
+    'use.hintT.tip': 'The file\'s triggers are suggested in the popup while you type the start of a trigger.',
+    'use.hintP.tip': 'The file\'s phrase texts are suggested in the popup when what you type appears inside the phrase.',
+    'enc.desc': 'Encrypted phrase files live in the same phrase folders as ordinary .ahk files.',
     'tt.dragResize': 'Drag to resize',
     'tt.swap': 'Swap trigger ↔ phrase',
     'tt.deselectAll': 'Deselect all',
     'tt.add': 'Add',
     'nav.settingsTip': 'Settings',
-    'btn.saveReload': 'Save & reload',
+    'tip.saved': '✓ Saved',
+    'status.count': (n, tot) => n === tot ? `${n} phrases` : `${n} of ${tot} phrases`,
+    'status.clearFilters': '✕ Clear all filters',
+    'status.filtersCleared': 'Filters cleared',
     'help.title': 'Help',
     // — Phrase folders —
     'fr.more': 'More word lists from the wordlists repo',
@@ -446,6 +504,7 @@ const LANG = {
     'wl.none': 'No word lists found.',
     'wl.fetchErr': m => `Could not fetch list: ${m}`,
     'folders.desc': 'All .ahk and .enc files in the selected folders are loaded as phrase files.',
+    'folders.active': 'Active phrase folders',
     'folders.add': '＋ Add folder',
     'folders.delTip': 'Remove folder',
     'folders.openExplorer': 'Open the folder in Explorer',
@@ -525,12 +584,13 @@ const LANG = {
     'dynApp.appPh': 'process or title:part',
     'dyn.stepLabels': 'Stepwise insertion — field labels <span style="font-weight:400;text-transform:none">(whitelist, separate with |)</span>',
     'dyn.stepLabels.desc': 'The phrase splits at these labels; each field is inserted separately and only the value is pasted (the label shows in the panel as a guide).',
-    'dyn.pasteMode': 'Insertion method',
-    'dyn.paste.auto': 'Auto — clipboard for long texts, keystrokes for short',
-    'dyn.paste.always': 'Always clipboard (fast)',
-    'dyn.paste.never': 'Always keystrokes (slow)',
-    'dyn.pasteMinLen': 'Clipboard threshold (characters)',
-    'dyn.pasteMinLen.desc': 'Texts shorter than this are typed character by character; longer ones are pasted via the clipboard.',
+    'gen.pasteMode': 'Insertion method',
+    'gen.paste.auto': 'Auto — clipboard for long texts, keystrokes for short',
+    'gen.paste.always': 'Always clipboard',
+    'gen.paste.never': 'Always keystrokes',
+    'gen.pasteMode.desc': 'Keystrokes go in as a single block and are usually fastest. The clipboard needs Ctrl+V, which takes noticeably longer when several programs hook the keyboard — but handles very long texts better.',
+    'gen.pasteMinLen': 'Clipboard threshold (characters)',
+    'gen.pasteMinLen.desc': 'Texts shorter than this are typed character by character; longer ones are pasted via the clipboard. A higher value means less clipboard use.',
     // — AI page —
     'ai.enable': 'Enable AI features',
     'ai.apiKey': 'API key',
@@ -682,8 +742,23 @@ const LANG = {
     'ctx.hideFile': 'Hide file', 'ctx.showFile': 'Show file',
     'ctx.openFolder': 'Open folder in Explorer',
     'ctx.hideFolder': 'Hide folder', 'ctx.showFolder': 'Show folder',
-    'ctx.preset.spellcheck': 'Spell check', 'ctx.preset.abbrev': 'Abbreviations', 'ctx.preset.phrases': 'Long phrases',
+    'ctx.preset.spellcheck': 'Word list / autocorrect',
+    'ctx.preset.abbrev': 'Abbreviations',
+    'ctx.preset.phrases': 'Phrases',
+    'ctx.preset.spellcheck.tip':
+      'For large word lists such as autocorrect: the words are corrected as you type, '
+      + 'but they never fill the popups.\n\nSets: Hotstrings ON · Trigger popup OFF · Phrase popup OFF\n'
+      + 'The file is hidden in the file list (reveal it with "Show hidden").',
+    'ctx.preset.abbrev.tip':
+      'For abbreviations: they expand as you type and can be found in the phrase popup.'
+      + '\n\nSets: Hotstrings ON · Trigger popup OFF · Phrase popup ON\n'
+      + 'The file is hidden in the file list (reveal it with "Show hidden").',
+    'ctx.preset.phrases.tip':
+      'For longer phrases you want to browse: they expand and are suggested in both popups.'
+      + '\n\nSets: Hotstrings ON · Trigger popup ON · Phrase popup ON\n'
+      + 'The file stays visible in the file list.',
     'toast.preset': name => `"${name}" applied`,
+    'toast.presetHidden': name => `"${name}" applied — the file is now hidden in the list (reveal it with "Show hidden")`,
     'ctx.backups': 'Backups…',
     'ctx.encryptFile': 'Encrypt (.ahk → .enc)', 'ctx.decryptFile': 'Decrypt (.enc → .ahk)',
     'ctx.presets': 'Default settings', 'ctx.details': 'Detailed settings',
@@ -739,7 +814,6 @@ const LANG = {
     'dynApp.empty': 'No app-specific modes configured.',
     'dynApp.mode.auto': 'Default', 'dynApp.mode.inline': 'Inline',
     'dynApp.mode.dialog': 'Dialog', 'dynApp.mode.off': 'Off',
-    'compound.saved': 'Saved.',
     'ai.batch.progress': (d,t) => `✨ AI-tagging ${d}/${t}…`, 'ai.batch.idle': '✨ AI-tag visible phrases',
     'dtm.dup': 'Duplicate to', 'dtm.move': 'Move to',
     'recent.off': '🕐 Recent', 'recent.used': '🕐 Used', 'recent.edited': '🕐 Edited',
@@ -907,7 +981,30 @@ function applySidebarCollapsed(on) {
   try { localStorage.setItem('expanto_sidebar_collapsed', on ? '1' : '0'); } catch(_) {}
   document.getElementById('sidebar')?.classList.toggle('sidebar-collapsed', on);
   const btn = document.getElementById('btnToggleSidebar');
-  if (btn) { btn.textContent = on ? '▶' : '◀'; btn.title = on ? 'Visa sidopanel' : 'Dölj sidopanel'; }
+  if (btn) {
+    const arrow = btn.querySelector('.vm-arrow');
+    if (arrow) arrow.textContent = on ? '▶' : '◀';
+    else btn.textContent = on ? '▶' : '◀';
+    btn.title = T(on ? 'tt.showSidebar' : 'tt.toggleSidebar');
+  }
+}
+
+// The editor panel shows trigger/phrase/category/tags (and the file) always;
+// everything else lives behind "Mer" (Ctrl+M). The choice is remembered.
+function applyMoreFields(on) {
+  g_moreFields = !!on;
+  try { localStorage.setItem('expanto_moreFields', on ? '1' : '0'); } catch(_) {}
+  document.getElementById('advFields')?.classList.toggle('hidden', !on);
+  const btn = document.getElementById('btnMoreFields');
+  if (btn) {
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    const arrow = btn.querySelector('.more-arrow');
+    if (arrow) arrow.textContent = on ? '▾' : '▸';
+  }
+}
+
+function toggleMoreFields() {
+  applyMoreFields(!g_moreFields);
 }
 
 function applySidebarMode(mode) {
@@ -1074,6 +1171,7 @@ let g_aiEnabled    = false;
 let g_llmEnabled   = false;
 let g_encUnlocked  = false;
 let g_newPhraseMode    = false;
+let g_moreFields       = false;   // editor panel: advanced fields expanded?
 let g_settingsMode     = false;
 let g_settingsPage     = 'folders';
 let g_capturingKey     = false;
@@ -1195,6 +1293,15 @@ window.initData = function(data, autoSelectId) {
   }
 };
 
+// A phrase is out of sight when its own file is hidden OR its folder is —
+// the sidebar has always honoured both, the phrase list only checked the
+// file, so hiding a folder emptied the file list while its phrases stayed.
+function _isPhraseHidden(path) {
+  if (g_fileSettingsCache[path]?.hidden) return true;
+  const fid = g_files.find(f => f.path === path)?.folder;
+  return !!fid && g_hiddenFolderIds.has(fid);
+}
+
 function _isFileHidden(f) {
   return f.hidden !== undefined ? !!f.hidden : !!g_fileSettingsCache[f.path]?.hidden;
 }
@@ -1231,6 +1338,18 @@ function _defaultNewFilePath() {
 function setNewFile(path, silent) {
   const input = document.getElementById('fNewFile');
   if (!input) return;
+  // Editing an existing phrase: the file field shows where the phrase lives,
+  // so choosing another file means "move it there" (asked for first).
+  if (!silent && g_selId && !g_newPhraseMode) {
+    const p = g_phrases.find(x => x.id === g_selId);
+    if (p && path && path !== p.file) {
+      if (confirm(T('confirm.moveToFile', 1, _fileLabel(path))))
+        postToAhk({ action: 'movePhrase', id: g_selId, targetFile: path });
+      else
+        setNewFile(p.file, true);   // revert the picker
+      return;
+    }
+  }
   input.value = path || '';
   if (path) g_newFileSelected = path;
   if (path && !silent) localStorage.setItem('expLastNewFile', path);
@@ -1422,6 +1541,8 @@ window.receiveSettings = function(data) {
   g_hiddenFolderIds   = new Set(data.hiddenFolders || []);
   renderFolderList(g_configuredFolders);
   populateSidebar();
+  applyFilter();   // hidden folders reach us after initData — re-filter the list
+  tipConfirmed();  // confirms an add/remove the user just asked for
 };
 
 window.receiveAiSettings = function(data) {
@@ -1544,6 +1665,7 @@ window.receiveDictSettings = function(data) {
   if (cbComp) cbComp.checked = !!data.compoundEnabled;
   const ml = document.getElementById('compoundMinLen');
   if (ml) ml.value = data.compoundMinLen || 12;
+  tipConfirmed();  // confirms a dictionary folder the user just added or removed
 };
 
 window.receiveHotkeySettings = function(data) {
@@ -1689,10 +1811,6 @@ window.receiveDynamicSettings = function(data) {
   if (mode) mode.value = data.defaultMode || 'auto';
   const labels = document.getElementById('dynStepLabels');
   if (labels) labels.value = data.stepLabels || '';
-  const pm = document.getElementById('pasteMode');
-  if (pm) { pm.value = data.pasteMode || 'auto'; _updatePasteMinLenVis(); }
-  const pml = document.getElementById('pasteMinLen');
-  if (pml) pml.value = data.pasteMinLen ?? 30;
   g_dynAppModes = data.appModes || [];
   renderDynAppGrid();
 };
@@ -1996,6 +2114,12 @@ function postToAhk(msg) {
 
 // ── UI binding ───────────────────────────────────────────────────────────────
 function bindUI() {
+  // Status bar: clearing every filter at once, and the live preview of the line the
+  // editor will write. The preview is bound on the panel, not on each field, so a
+  // field added later is covered without anyone having to remember this place.
+  document.getElementById('btnClearFilters').addEventListener('click', clearAllFilters);
+  document.getElementById('detailPanel').addEventListener('input', requestLinePreview);
+
   document.getElementById('searchBox').addEventListener('input', () => {
     g_searchHistIdx = -1;   // typing always breaks history navigation
     applyFilter();
@@ -2037,6 +2161,16 @@ function bindUI() {
   document.getElementById('btnCompact').addEventListener('click', () => applyCompactMode(!g_compactMode));
   document.getElementById('previewLinesSlider')?.addEventListener('input', e => applyPreviewLines(e.target.value));
   document.getElementById('btnToggleSidebar').addEventListener('click', () => applySidebarCollapsed(!g_sidebarCollapsed));
+  // View menu: list density, preview lines and the sidebar toggle live here
+  document.getElementById('btnViewMenu')?.addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('viewMenu')?.classList.toggle('hidden');
+  });
+  document.getElementById('viewMenu')?.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => document.getElementById('viewMenu')?.classList.add('hidden'));
+  // "Mer" — the rarely used editor fields
+  document.getElementById('btnMoreFields')?.addEventListener('click', () => toggleMoreFields());
+  applyMoreFields(localStorage.getItem('expanto_moreFields') === '1');
   // Clicking the narrow expand-strip when sidebar is collapsed also expands it
   document.getElementById('sidebarResizeHandle').addEventListener('click', e => {
     if (g_sidebarCollapsed) { e.stopPropagation(); applySidebarCollapsed(false); }
@@ -2127,8 +2261,9 @@ function bindUI() {
   document.getElementById('btnBulkAi').addEventListener('click', aiSuggestBulk);
   document.addEventListener('click', () => document.getElementById('aiDropMenu')?.classList.add('hidden'));
 
-  // File settings panel
-  document.getElementById('btnFileSettings').addEventListener('click', () => {
+  // File settings are opened from the file's right-click menu (the toolbar
+  // button was removed); the in-window hotkey still routes here.
+  document.getElementById('btnFileSettings')?.addEventListener('click', () => {
     const path = g_selFiles.size === 1 ? [...g_selFiles][0] : (g_files[0]?.path || '');
     openFileSettings(path);
   });
@@ -2245,19 +2380,26 @@ function bindUI() {
 
   // Settings mode
   document.getElementById('btnSettings').addEventListener('click', () => enterSettings(g_settingsPage));
+  document.getElementById('btnTools').addEventListener('click', () => {
+    document.getElementById('viewMenu')?.classList.add('hidden');
+    openTools();
+  });
   document.getElementById('btnCloseSettings').addEventListener('click', leaveSettings);
   document.querySelectorAll('.settings-cat-list li').forEach(li => {
     li.addEventListener('click', () => showSettingsPage(li.dataset.settings));
   });
 
   // Settings pages — folders
-  document.getElementById('btnAddFolder').addEventListener('click', () => postToAhk({ action: 'addFolder' }));
+  document.getElementById('btnAddFolder').addEventListener('click', () => {
+    postToAhk({ action: 'addFolder' });
+    tipWhenConfirmed();
+  });
 
   // Settings pages — General
-  document.getElementById('btnSaveGeneral').addEventListener('click', saveGeneralSettings);
+  document.getElementById('btnSaveGeneral').addEventListener('click', () => { saveGeneralSettings(); tipSaved(); });
 
   // Settings pages — AI
-  document.getElementById('btnSaveAiSettings').addEventListener('click', saveAiSettings);
+  document.getElementById('btnSaveAiSettings').addEventListener('click', () => { saveAiSettings(); tipSaved(); });
   document.getElementById('btnResetAiUsage').addEventListener('click', () => postToAhk({ action: 'aiResetUsage' }));
   document.getElementById('btnAiBatchAll').addEventListener('click', aiBatchVisible);
   document.getElementById('btnLlmProbe').addEventListener('click', () => {
@@ -2293,17 +2435,17 @@ function bindUI() {
   document.getElementById('btnRunStats').addEventListener('click', runStatAnalysis);
 
   // Settings pages — hotkeys
-  document.getElementById('btnSaveHotkeys').addEventListener('click', saveHotkeySettings);
+  document.getElementById('btnSaveHotkeys').addEventListener('click', () => { saveHotkeySettings(); tipSaved(); });
   document.getElementById('btnCaptureKey').addEventListener('click', startKeyCapture);
   document.querySelectorAll('.hk-input').forEach(inp => {
     inp.addEventListener('focus', () => { g_captureTarget = inp; });
   });
 
   // Settings pages — popup
-  document.getElementById('btnSavePopup').addEventListener('click', savePopupSettings);
+  document.getElementById('btnSavePopup').addEventListener('click', () => { savePopupSettings(); tipSaved(); });
 
   // Settings pages — dynamic fields
-  document.getElementById('btnSaveDynamic').addEventListener('click', saveDynamicSettings);
+  document.getElementById('btnSaveDynamic').addEventListener('click', () => { saveDynamicSettings(); tipSaved(); });
   document.getElementById('pasteMode').addEventListener('change', _updatePasteMinLenVis);
   document.getElementById('btnAddDynApp').addEventListener('click', () => {
     g_dynAppModes.push({ app: '', mode: 'auto' });
@@ -2312,25 +2454,25 @@ function bindUI() {
     if (rows.length) rows[rows.length - 1].focus();
   });
 
-  // Settings pages — spell check enabled toggle
-  document.getElementById('btnSaveSpellEnabled').addEventListener('click', () => {
+  // Settings pages — spell check. One Spara at the bottom of the page saves the
+  // whole page: the master toggle and the compound-word settings used to have a
+  // Spara button each, which made it look as if half the page had not been saved.
+  document.getElementById('btnSaveSpell').addEventListener('click', () => {
     const on = document.getElementById('spellEnabled').checked;
     applySpellCheck(on);
     postToAhk({ action: 'saveSpellEnabled', enabled: on ? 1 : 0 });
+    postToAhk({
+      action:  'saveCompoundSettings',
+      enabled: document.getElementById('compoundEnabled').checked,
+      minLen:  parseInt(document.getElementById('compoundMinLen').value, 10) || 12,
+    });
+    tipSaved();
   });
 
   // Settings pages — dictionary
   document.getElementById('btnAddDictFolder').addEventListener('click', () => {
     postToAhk({ action: 'addDictFolder' });
-  });
-  document.getElementById('btnSaveCompound').addEventListener('click', () => {
-    postToAhk({
-      action:      'saveCompoundSettings',
-      enabled:     document.getElementById('compoundEnabled').checked,
-      minLen:      parseInt(document.getElementById('compoundMinLen').value, 10) || 12,
-    });
-    const st = document.getElementById('compoundStatus');
-    if (st) { st.textContent = T('compound.saved'); setTimeout(() => { if (st) st.textContent = ''; }, 2000); }
+    tipWhenConfirmed();
   });
 
   // Toolbar enc lock button
@@ -2457,13 +2599,29 @@ function bindUI() {
     } else if (action === 'applyPreset') {
       const preset = item.dataset.preset;
       postToAhk({ action: 'applyPreset', preset, paths: _ctxPresetPaths });
-      showInfoToast(T('toast.preset', T('ctx.preset.' + preset)));
+      // The word-list and abbreviation presets also hide the file (those files
+      // hold hundreds of entries nobody browses) — say so, or it looks like the
+      // file vanished.
+      const hides = preset === 'spellcheck' || preset === 'abbrev';
+      showInfoToast(T(hides ? 'toast.presetHidden' : 'toast.preset', T('ctx.preset.' + preset)));
       closeContextMenu();
     } else if (action === 'backups') {
       postToAhk({ action: 'getBackups', path: item.dataset.path });
       closeContextMenu();
     } else if (action === 'batchFileSet') {
-      postToAhk({ action: 'fileBatchSet', type: item.dataset.type, enable: item.dataset.enable === 'true', paths: _ctxPresetPaths });
+      const type   = item.dataset.type;
+      const enable = item.dataset.enable === 'true';
+      // Flip the local state right away. The confirmation from AHK arrives
+      // after a full phrase reload (hotstrings are re-registered and the hint
+      // index rebuilt), which on a large library takes long enough that the
+      // menu still showed the old label — it looked like two clicks were
+      // needed. receiveFiles later confirms the same state.
+      const key = type === 'hs' ? 'hsOn' : type === 'hintT' ? 'hintTOn' : 'hintPOn';
+      _ctxPresetPaths.forEach(p => {
+        g_fileSettingsMap[p] = Object.assign({}, g_fileSettingsMap[p] || {}, { [key]: enable });
+      });
+      populateSidebar();
+      postToAhk({ action: 'fileBatchSet', type, enable, paths: _ctxPresetPaths });
       closeContextMenu();
     } else if (action === 'encryptPath') {
       postToAhk({ action: 'enc', task: 'lockPath', path: item.dataset.path });
@@ -2591,10 +2749,21 @@ function _bindPanelResize(handleId, panelId, storageKey, minW, maxW, rightPanel)
 }
 
 // ── Settings mode ─────────────────────────────────────────────────────────────
+// Underhåll is reached from the ⋮ menu instead of the settings list: it holds
+// commands you run, not settings you save. It borrows the settings shell (and its
+// ← Tillbaka), but without the category list, so it reads as its own view.
+function openTools() {
+  const prev = g_settingsPage;
+  enterSettings('maint');
+  g_settingsPage = (prev === 'maint') ? 'general' : prev;   // ⚙ still returns to real settings
+  document.querySelector('#settingsNav .settings-cat-list')?.classList.add('hidden');
+}
+
 function enterSettings(page) {
   g_settingsMode = true;
   document.getElementById('filterNav').classList.add('hidden');
   document.getElementById('settingsNav').classList.remove('hidden');
+  document.querySelector('#settingsNav .settings-cat-list')?.classList.remove('hidden');
   document.getElementById('listArea').classList.add('hidden');
   document.getElementById('settingsMain').classList.remove('hidden');
   document.getElementById('detailPanel').classList.add('hidden');
@@ -2610,17 +2779,20 @@ function leaveSettings() {
 }
 
 function showSettingsPage(page) {
+  const pageIds = {
+    general: 'spGeneral', folders: 'spFolders', hotkeys: 'spHotkeys', popup: 'spPopup', dynamic: 'spDynamic',
+    ai: 'spAi', maint: 'spMaint', spell: 'spSpell',
+    enc: 'spFolders',   // encryption now lives on the phrase-folders page
+  };
+  if (!pageIds[page]) page = 'general';
+  if (page === 'enc') page = 'folders';   // keep a stored "enc" choice sensible
   g_settingsPage = page;
   document.querySelectorAll('.settings-cat-list li').forEach(li => {
     li.classList.toggle('selected', li.dataset.settings === page);
   });
-  const pageIds = {
-    general: 'spGeneral', folders: 'spFolders', hotkeys: 'spHotkeys', popup: 'spPopup', dynamic: 'spDynamic',
-    ai: 'spAi', maint: 'spMaint', spell: 'spSpell', enc: 'spEnc',
-  };
   document.querySelectorAll('.settings-page').forEach(p => p.classList.add('hidden'));
   const targetId = pageIds[page];
-  if (targetId) document.getElementById(targetId).classList.remove('hidden');
+  if (targetId) document.getElementById(targetId)?.classList.remove('hidden');
   if (page === 'spell') loadWordlistIndex();
   if (page === 'folders') {
     loadPhrasePackIndex();
@@ -2638,7 +2810,7 @@ function populateSidebar() {
   // Phrases from hidden files are excluded from cat/tag counts when not showing hidden
   const visiblePhrases = g_showHiddenFiles
     ? g_phrases
-    : g_phrases.filter(p => !g_fileSettingsCache[p.file]?.hidden);
+    : g_phrases.filter(p => !_isPhraseHidden(p.file));
   renderFileFilterList(fileCounts);
 
   // Category counts scoped to selected files
@@ -2723,24 +2895,18 @@ function renderFileFilterList(counts) {
   all.className = 'all-files-row' + (g_selFiles.size === 0 ? ' selected' : '');
   all.innerHTML =
     `<span class="li-name">${T('allFilter')}</span>` +
-    `<span class="flh-badges" id="flhGlobal">` +
-    `<span class="flh-btn${allHs?' on':''}" data-type="hs"    title="Slå av/på HS för alla filer">H</span>` +
-    `<span class="flh-btn${allHt?' on':''}" data-type="hintT" title="Slå av/på trigger-popup för alla filer">T</span>` +
-    `<span class="flh-btn${allHp?' on':''}" data-type="hintP" title="Slå av/på fras-popup för alla filer">P</span>` +
-    `</span>` +
-    `<span class="li-count">${total}</span>`;
+    `<span class="li-count">${total}</span>` +
+    useBadgeHtml({ hsOn: allHs, hintTOn: allHt, hintPOn: allHp });
   all.addEventListener('click', e => {
-    const btn = e.target.closest('[data-type]');
-    if (btn && btn.closest('.flh-badges')) {
-      const type = btn.dataset.type;
+    const badge = e.target.closest('[data-usebadge]');
+    if (badge) {
+      e.stopPropagation();
       const paths = globalPaths
         .filter(f => !(f.toLowerCase().endsWith('.enc') && !g_encUnlocked));
-      postToAhk({ action: 'fileBatchSet', type, enable: !btn.classList.contains('on'), paths });
+      showUsedForMenu(badge, paths, { hsOn: allHs, hintTOn: allHt, hintPOn: allHp });
       return;
     }
-    if (!e.target.closest('.flh-badges')) {
-      g_selFiles.clear(); populateSidebar(); applyFilter();
-    }
+    g_selFiles.clear(); populateSidebar(); applyFilter();
   });
   ul.appendChild(all);
 
@@ -2782,19 +2948,13 @@ function renderFileFilterList(counts) {
       hdr.innerHTML =
         `<span class="fgh-arrow">${isCollapsed ? '▸' : '▾'}</span>` +
         `<span class="fgh-name" title="${escHtml(folderLabel[fid])}">${escHtml(folderLabel[fid])}</span>` +
-        `<span class="fgh-badges">` +
-        `<span class="fb${fHs ? ' on':''}" data-type="hs">H</span>` +
-        `<span class="fb${fT  ? ' on':''}" data-type="hintT">T</span>` +
-        `<span class="fb${fP  ? ' on':''}" data-type="hintP">P</span>` +
-        `</span>` +
-        `<span class="li-count">${folderTotal}</span>`;
+        `<span class="li-count">${folderTotal}</span>` +
+        useBadgeHtml({ hsOn: fHs, hintTOn: fT, hintPOn: fP });
       hdr.addEventListener('click', e => {
-        if (e.target.closest('.fgh-badges')) {
+        const badge = e.target.closest('[data-usebadge]');
+        if (badge) {
           e.stopPropagation();
-          const badge = e.target.closest('[data-type]');
-          if (!badge) return;
-          const type = badge.dataset.type;
-          postToAhk({ action: 'fileBatchSet', type, enable: !badge.classList.contains('on'), paths });
+          showUsedForMenu(badge, paths, { hsOn: fHs, hintTOn: fT, hintPOn: fP });
           return;
         }
         if (e.target.closest('.fgh-arrow')) {
@@ -2847,28 +3007,12 @@ function renderFileFilterList(counts) {
         li.innerHTML =
           `<span class="li-name" title="${escHtml(path)}">${isEnc ? '🔓 ' : ''}${escHtml(display)}</span>` +
           `<span class="li-count">${cnt}</span>` +
-          `<span class="file-badges">` +
-          `<span class="fb${hsOn    ? ' on':''}" data-type="hs"    title="${T(hsOn    ?'badge.hsActive':'badge.hsInactive')}">H</span>` +
-          `<span class="fb${hintTOn ? ' on':''}" data-type="hintT" title="${T(hintTOn?'badge.hintTActive':'badge.hintTInactive')}">T</span>` +
-          `<span class="fb${hintPOn ? ' on':''}" data-type="hintP" title="${T(hintPOn?'badge.hintPActive':'badge.hintPInactive')}">P</span>` +
-          `</span>`;
+          useBadgeHtml({ hsOn, hintTOn, hintPOn });
         li.addEventListener('click', e => {
-          const badge = e.target.closest('[data-type]');
+          const badge = e.target.closest('[data-usebadge]');
           if (badge) {
-            const type   = badge.dataset.type;
-            const enable = !badge.classList.contains('on');
-            // Optimistic UX: flip badge immediately so click feels instant
-            const s = g_fileSettingsMap[path] || {};
-            if (type === 'hs')    s.hsOn    = enable;
-            if (type === 'hintT') s.hintTOn = enable;
-            if (type === 'hintP') s.hintPOn = enable;
-            g_fileSettingsMap[path] = s;
-            badge.classList.toggle('on', enable);
-            const titleKey = type === 'hs'    ? (enable ? 'badge.hsActive'    : 'badge.hsInactive')
-                           : type === 'hintT' ? (enable ? 'badge.hintTActive' : 'badge.hintTInactive')
-                                              : (enable ? 'badge.hintPActive' : 'badge.hintPInactive');
-            badge.title = T(titleKey);
-            postToAhk({ action: 'fileBatchSet', type, enable, paths: [path] });
+            e.stopPropagation();
+            showUsedForMenu(badge, [path], { hsOn, hintTOn, hintPOn });
           } else {
             g_selFiles.has(path) ? g_selFiles.delete(path) : g_selFiles.add(path);
             populateSidebar(); applyFilter();
@@ -2920,8 +3064,9 @@ function renderFolderList(folders) {
       `<input type="checkbox" ${f.enabled ? 'checked' : ''} data-id="${escHtml(f.id)}"> ` +
       `<span class="folder-name">${escHtml(name)}</span>` +
       `<span class="folder-path">${escHtml(f.path || '')}</span></label>` +
+      // No "open in editor" here — these are folders, not files (individual
+      // files have that action in their right-click menu).
       `<button class="folder-act folder-open" title="${escHtml(T('folders.openExplorer'))}">📂</button>` +
-      `<button class="folder-act folder-edit" title="${escHtml(T('folders.openEditor'))}">📝</button>` +
       `<button class="folder-del" data-id="${escHtml(f.id)}" title="${escHtml(T('folders.delTip'))}">✕</button>`;
     li.querySelector('input').addEventListener('change', e => {
       postToAhk({ action: 'toggleFolder', id: e.target.dataset.id, enabled: e.target.checked });
@@ -2929,14 +3074,13 @@ function renderFolderList(folders) {
     li.querySelector('.folder-open').addEventListener('click', () => {
       if (f.path) postToAhk({ action: 'openFolder', path: f.path });
     });
-    li.querySelector('.folder-edit').addEventListener('click', () => {
-      if (f.path) postToAhk({ action: 'openEditor', path: f.path });
-    });
     li.querySelector('.folder-del').addEventListener('click', e => {
       const id = e.currentTarget.dataset.id;
       const nm = (f.path || id).split(/[\\/]/).pop() || id;
-      if (confirm(T('folders.del.confirm', nm)))
+      if (confirm(T('folders.del.confirm', nm))) {
         postToAhk({ action: 'removeFolder', id });
+        tipWhenConfirmed();
+      }
     });
     ul.appendChild(li);
   });
@@ -3071,8 +3215,10 @@ function renderDictFolderList(paths) {
       `<label class="folder-toggle" title="${escHtml(p)}"><span class="folder-name">${escHtml(name)}</span></label>` +
       `<button class="folder-del" title="Ta bort mapp">✕</button>`;
     li.querySelector('.folder-del').addEventListener('click', () => {
-      if (confirm(T('dictFolders.del.confirm', name)))
+      if (confirm(T('dictFolders.del.confirm', name))) {
         postToAhk({ action: 'removeDictFolder', path: p });
+        tipWhenConfirmed();
+      }
     });
     ul.appendChild(li);
   });
@@ -3093,7 +3239,7 @@ function applyFilter() {
   const q  = document.getElementById('searchBox').value.trim().toLowerCase();
   const cf = g_colFilters;
   g_filtered = g_phrases.filter(p => {
-    if (!g_showHiddenFiles && g_fileSettingsCache[p.file]?.hidden) return false;
+    if (!g_showHiddenFiles && _isPhraseHidden(p.file)) return false;
     if (g_selFiles.size && !g_selFiles.has(p.file)) return false;
     if (g_selCats.size  && !g_selCats.has(p.cat))   return false;
     if (g_selTags.size) {
@@ -3139,7 +3285,7 @@ function applyFilter() {
   }
   _applyPhraseGrouping();
   renderPhraseList();
-  document.getElementById('phraseCount').textContent = T('count', g_filtered.length, g_phrases.length !== g_filtered.length ? g_phrases.length : null);
+  updateStatusCounts();
 }
 
 // ── Column config, widths, visibility, sort, filters ─────────────────────────
@@ -3753,7 +3899,10 @@ function selectPhrase(id) {
   const opts = p.options || '';
   document.getElementById('detailPanel').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = p.trigger;
-  document.getElementById('fFileGroup').style.display = 'none';
+  // The file is one of the always-visible fields; picking another one moves
+  // the phrase (confirmed first) — see setNewFile.
+  document.getElementById('fFileGroup').style.display = '';
+  setNewFile(p.file, true);
   document.getElementById('fStatusGroup').style.display = '';
   document.getElementById('fMetaGroup').style.display = '';
   document.getElementById('btnDelete').style.display = '';
@@ -3789,6 +3938,7 @@ function closeDetail() {
   _flushAutosave();
   g_selId = null;
   g_newPhraseMode = false;
+  showStatusLine('');            // the written-line preview belongs to the editor
   document.getElementById('detailPanel').classList.add('hidden');
   document.querySelectorAll('.phrase-row').forEach(r => r.classList.remove('selected'));
   document.getElementById('fFileGroup').style.display = 'none';
@@ -3920,6 +4070,133 @@ function closeHelpModal() {
   document.getElementById('helpModal').classList.add('hidden');
 }
 
+// ── Status bar ────────────────────────────────────────────────────────────────
+// Confirmations belong in a place the eye can find again, not in something that
+// appears under the pointer and vanishes. The bar carries three things: how much
+// of the library is showing, the exact line the editor is about to write, and a
+// short-lived message for the last thing that happened.
+let _statusMsgTimer = null;
+function setStatus(msg) {
+  const el = document.getElementById('statusMsg');
+  if (!el) return;
+  clearTimeout(_statusMsgTimer);
+  el.textContent = msg;
+  el.classList.remove('fade');
+  _statusMsgTimer = setTimeout(() => {
+    el.classList.add('fade');
+    setTimeout(() => { if (el.classList.contains('fade')) el.textContent = ''; }, 350);
+  }, 2500);
+}
+
+function tipSaved() { setStatus(T('tip.saved')); }
+
+// Settings that apply the moment you change them (adding or removing a phrase
+// folder, a dictionary folder) confirm when the updated list comes back from
+// AutoHotkey, not on the click: the click only opens a folder picker, and the
+// save can still be cancelled there.
+let g_tipPending = false;
+function tipWhenConfirmed() { g_tipPending = true; }
+function tipConfirmed() {
+  if (!g_tipPending) return;      // a plain refresh, not something the user just did
+  g_tipPending = false;
+  tipSaved();
+}
+
+// ── Filters: is anything narrowing the list, and how do we get back? ─────────
+// "Show hidden" is deliberately NOT counted: it reveals rather than narrows, and
+// clearing it would make things disappear — the opposite of what the button says.
+function filtersActive() {
+  if (document.getElementById('searchBox').value.trim()) return true;
+  if (g_selFiles.size || g_selCats.size || g_selTags.size || g_selLangs.size) return true;
+  if (Object.values(g_colFilters).some(v => v)) return true;
+  if (g_recentMode && g_recentMode !== 'off') return true;
+  if (g_aiSearchMode) return true;
+  return false;
+}
+
+function clearAllFilters() {
+  document.getElementById('searchBox').value = '';
+  g_selFiles.clear(); g_selCats.clear(); g_selTags.clear(); g_selLangs.clear();
+  for (const k of Object.keys(g_colFilters)) g_colFilters[k] = '';
+  document.querySelectorAll('#listFilters input').forEach(i => { i.value = ''; });
+  if (g_recentMode !== 'off') {
+    g_recentMode = 'off';
+    const rb = document.getElementById('btnRecentToggle');
+    if (rb) { rb.textContent = T('recent.off'); rb.classList.remove('active'); }
+  }
+  if (g_aiSearchMode) {
+    g_aiSearchMode = false;
+    g_aiSearchIds.clear();
+    const ab = document.getElementById('btnAiSearch');
+    if (ab) { ab.textContent = T('aiSearch.btn'); ab.classList.remove('active'); ab.dataset.i18n = 'aiSearch.btn'; }
+  }
+  g_searchHistIdx = -1;
+  populateSidebar();
+  applyFilter();
+  setStatus(T('status.filtersCleared'));
+}
+
+function updateStatusCounts() {
+  const el = document.getElementById('statusCount');
+  if (el) el.textContent = T('status.count', g_filtered.length, g_phrases.length);
+  const btn = document.getElementById('btnClearFilters');
+  if (btn) btn.classList.toggle('hidden', !filtersActive());
+}
+
+// The line the editor would write, rendered by AutoHotkey's own BuildPhraseLine so
+// it cannot drift from what actually lands in the file. Debounced: it is a round
+// trip, and it is only interesting once the typing pauses.
+let _linePreviewTimer = null;
+function requestLinePreview() {
+  clearTimeout(_linePreviewTimer);
+  _linePreviewTimer = setTimeout(() => {
+    const val = id => document.getElementById(id)?.value ?? '';
+    const trigRaw = val('fTrigger');
+    if (!trigRaw.trim()) {          // nothing identifiable yet — say nothing
+      showStatusLine('');
+      return;
+    }
+    const { trigger, aliases } = _parseTriggerAlias(trigRaw);
+    const p = g_phrases.find(x => x.id === g_selId);
+    let opts = (p && p.options) || '';
+    opts = setOpt(opts, '*', document.getElementById('fOptStar')?.checked);
+    opts = setOpt(opts, '?', document.getElementById('fOptQ')?.checked);
+    opts = setOpt(opts, 'O', document.getElementById('fOptO')?.checked);
+    opts = setOpt(opts, 'C', document.getElementById('fOptC')?.checked);
+    const shouldTrim = document.getElementById('phraseTrim')?.checked;
+    const raw = val('fPhrase');
+    const { alts, altNames } = _collectAltData(shouldTrim);
+    postToAhk({
+      action:   'previewPhraseLine',
+      id:       g_newPhraseMode ? '' : (g_selId || ''),
+      options:  opts,
+      trigger,
+      aliases,
+      phrase:   shouldTrim ? raw.trim() : raw,
+      cat:      val('fCat').trim(),
+      tags:     val('fTags').trim(),
+      lang:     val('fLang').trim(),
+      comment:  val('fComment').trim(),
+      apps:     val('fApps').trim(),
+      url:      val('fUrl').trim(),
+      disabled: document.getElementById('fDisabled')?.checked ? 1 : 0,
+      customFields: (p && getCustomFieldValues(p.file)) || {},
+      alts, altNames,
+    });
+  }, 250);
+}
+
+function showStatusLine(line) {
+  const el = document.getElementById('statusLine');
+  if (!el) return;
+  el.textContent = line;
+  el.title = line;
+}
+
+window.receivePhraseLine = function(data) {
+  showStatusLine((data && data.line) || '');
+};
+
 function showInfoToast(msg) {
   let el = document.getElementById('infoToast');
   if (!el) {
@@ -3989,11 +4266,13 @@ function openNewPhrase() {
   document.getElementById('fOptO').checked    = false;
   document.getElementById('fOptC').checked    = false;
 
-  // Pre-select file: last explicitly chosen file first, then the single
-  // filtered file, then the default (first visible)
-  const last = localStorage.getItem('expLastNewFile');
-  const lastOk = last && g_files.some(f => f.path === last) ? last : null;
-  const preselect = lastOk || (g_selFiles.size === 1 ? [...g_selFiles][0] : null);
+  // Pre-select file: filtering on a single file means "I'm working in this
+  // one", so it beats the last explicitly chosen file; then the default
+  // (first visible). Both candidates must still exist.
+  const exists = p => !!p && g_files.some(f => f.path === p);
+  const only   = g_selFiles.size === 1 ? [...g_selFiles][0] : null;
+  const last   = localStorage.getItem('expLastNewFile');
+  const preselect = (exists(only) && only) || (exists(last) && last) || null;
   setNewFile(preselect || _defaultNewFilePath(), true);   // sets #fNewFile value + button label
   const chosen = document.getElementById('fNewFile').value;
 
@@ -4142,6 +4421,11 @@ window.receiveGeneralSettings = function(data) {
   if (chk) chk.checked = !!data.startMinimized;
   const auto = document.getElementById('genAutostart');
   if (auto) auto.checked = !!data.autostart;
+  const pm = document.getElementById('pasteMode');
+  if (pm && data.pasteMode) pm.value = data.pasteMode;
+  const pml = document.getElementById('pasteMinLen');
+  if (pml && data.pasteMinLen != null) pml.value = data.pasteMinLen;
+  _updatePasteMinLenVis();
 };
 
 function saveGeneralSettings() {
@@ -4150,6 +4434,10 @@ function saveGeneralSettings() {
     editorCmd:      document.getElementById('genEditorCmd').value.trim(),
     startMinimized: !!(document.getElementById('genStartMinimized')?.checked),
     autostart:      !!(document.getElementById('genAutostart')?.checked),
+    // Insertion method lives here, not under Dynamic fields: it governs every
+    // expansion, not only the ones with {fields}.
+    pasteMode:      document.getElementById('pasteMode').value,
+    pasteMinLen:    parseInt(document.getElementById('pasteMinLen').value, 10) || 30,
   });
 }
 
@@ -4669,8 +4957,6 @@ function saveDynamicSettings() {
     defaultMode: document.getElementById('dynDefaultMode').value,
     stepLabels:  document.getElementById('dynStepLabels').value,
     appModes:    g_dynAppModes.filter(r => r.app.trim()),
-    pasteMode:   document.getElementById('pasteMode').value,
-    pasteMinLen: parseInt(document.getElementById('pasteMinLen').value, 10) || 30,
   });
 }
 
@@ -4680,6 +4966,15 @@ function onGlobalKey(e) {
   const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
   const isSearch = document.activeElement?.id === 'searchBox';
+
+  // Ctrl+M — show/hide the rarely used editor fields ("Mer")
+  if (e.key === 'm' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    toggleMoreFields();
+    if (g_moreFields)
+      document.getElementById('advFields')?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
 
   // Enter NEVER inserts a phrase. In the search box it commits the search by
   // selecting the top result; inside an edit field it falls through to the default
@@ -4814,7 +5109,7 @@ function renderTagCloud() {
   const tagCounts = {}, langCounts = {};
   const scopeFiles = g_selFiles.size > 0;
   const scopeCats  = g_selCats.size  > 0;
-  for (const p of (g_showHiddenFiles ? g_phrases : g_phrases.filter(p2 => !g_fileSettingsCache[p2.file]?.hidden))) {
+  for (const p of (g_showHiddenFiles ? g_phrases : g_phrases.filter(p2 => !_isPhraseHidden(p2.file)))) {
     if (scopeFiles && !g_selFiles.has(p.file)) continue;
     if (scopeCats  && !g_selCats.has(p.cat))  continue;
     (p.tags || '').split(',').forEach(t => {
@@ -5516,6 +5811,15 @@ function submitNewFile() {
 }
 
 // ── File context menu ─────────────────────────────────────────────────────────
+// The three file presets, each with a hover explanation of what it sets and
+// what happens to the file (two of them hide it from the list).
+function _presetItems() {
+  return ['spellcheck', 'abbrev', 'phrases'].map(p =>
+    `<div class="ctx-item" data-action="applyPreset" data-preset="${p}"` +
+    ` title="${escHtml(T('ctx.preset.' + p + '.tip'))}">${escHtml(T('ctx.preset.' + p))}</div>`
+  ).join('');
+}
+
 function showFileContextMenu(e, path, s) {
   // If the right-clicked file is part of a multi-file selection, apply to all selected files
   _ctxPresetPaths = g_selFiles.size > 1 && g_selFiles.has(path) ? [...g_selFiles] : [path];
@@ -5538,9 +5842,7 @@ function showFileContextMenu(e, path, s) {
     `<div class="ctx-submenu">` +
     `<div class="ctx-item ctx-submenu-trigger">${T('ctx.presets')}</div>` +
     `<div class="ctx-submenu-panel">` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="spellcheck">${T('ctx.preset.spellcheck')}</div>` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="abbrev">${T('ctx.preset.abbrev')}</div>` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="phrases">${T('ctx.preset.phrases')}</div>` +
+    _presetItems() +
     `</div></div>`;
   const detailsSubmenu =
     `<div class="ctx-submenu">` +
@@ -5582,11 +5884,7 @@ function showFolderContextMenu(e, folderPath, folderId) {
   const openFolderItem = folderPath
     ? `<div class="ctx-item" data-action="openFolder" data-path="${escHtml(folderPath)}">${T('ctx.openFolder')}</div>`
     : '';
-  const presetItems =
-    `<div class="ctx-sep"></div>` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="spellcheck">${T('ctx.preset.spellcheck')}</div>` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="abbrev">${T('ctx.preset.abbrev')}</div>` +
-    `<div class="ctx-item" data-action="applyPreset" data-preset="phrases">${T('ctx.preset.phrases')}</div>`;
+  const presetItems = `<div class="ctx-sep"></div>` + _presetItems();
   menu.innerHTML = openFolderItem + toggleItem +
     (openFolderItem || toggleItem ? `<div class="ctx-sep"></div>` : '') +
     `<div class="ctx-item ctx-new-file" data-folder="${escHtml(folderPath)}">${T('ctx.newFile')}</div>` +
@@ -5601,6 +5899,63 @@ function showFolderContextMenu(e, folderPath, folderId) {
 
 function closeContextMenu() {
   document.getElementById('ctxMenu').classList.add('hidden');
+}
+
+// ── "Used for" (was the H/T/P badges) ────────────────────────────────────────
+// One badge per file/folder/all-row shows which of the three roles are active
+// (just the active letters, so a normal file reads "HT"); clicking it opens a
+// small menu with the roles spelled out. Toggling keeps the menu open so
+// several roles can be set in one go.
+const USE_TYPES = [
+  { type: 'hs',    key: 'hsOn',    letter: 'H', label: 'use.hs' },
+  { type: 'hintT', key: 'hintTOn', letter: 'T', label: 'use.hintT' },
+  { type: 'hintP', key: 'hintPOn', letter: 'P', label: 'use.hintP' }
+];
+
+// state: {hsOn, hintTOn, hintPOn} — the badge markup for a row
+function useBadgeHtml(state) {
+  const on = USE_TYPES.filter(u => state[u.key]);
+  const letters = on.length ? on.map(u => u.letter).join('') : '–';
+  const names = on.length ? on.map(u => T(u.label)).join(', ') : T('use.none');
+  return `<span class="use-badge${on.length ? '' : ' none'}" data-usebadge="1"` +
+         ` title="${escHtml(T('use.title') + ': ' + names)}">${letters}</span>`;
+}
+
+function showUsedForMenu(anchor, paths, state) {
+  const menu = document.getElementById('ctxMenu');
+  const render = () => {
+    menu.innerHTML =
+      `<div class="ctx-head">${escHtml(T('use.title'))}</div>` +
+      USE_TYPES.map(u =>
+        `<div class="ctx-item ctx-check" data-usetype="${u.type}"` +
+        ` title="${escHtml(T(u.label + '.tip'))}">` +
+        `<span class="ctx-tick">${state[u.key] ? '✓' : ''}</span>${escHtml(T(u.label))}</div>`
+      ).join('');
+    menu.querySelectorAll('[data-usetype]').forEach(item => {
+      item.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const u = USE_TYPES.find(x => x.type === item.dataset.usetype);
+        const enable = !state[u.key];
+        state[u.key] = enable;
+        paths.forEach(p => {
+          const s = g_fileSettingsMap[p] || {};
+          s[u.key] = enable;
+          g_fileSettingsMap[p] = s;
+        });
+        postToAhk({ action: 'fileBatchSet', type: u.type, enable, paths });
+        render();          // keep the menu open for further toggles
+        populateSidebar(); // refresh the badges behind it
+      });
+    });
+  };
+  render();
+  menu.style.left = '-9999px';
+  menu.style.top  = '-9999px';
+  menu.classList.remove('hidden');
+  const r = anchor.getBoundingClientRect();
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(0, Math.min(r.left, window.innerWidth  - mw - 4)) + 'px';
+  menu.style.top  = Math.max(0, Math.min(r.bottom + 2, window.innerHeight - mh - 4)) + 'px';
 }
 
 // ── Maintenance ───────────────────────────────────────────────────────────────

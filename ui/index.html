@@ -16,17 +16,27 @@
     <button id="clearSearch" title="Rensa sök" data-i18n-title="tt.clearSearch">✕</button>
   </div>
   <label><input type="checkbox" id="chkFuzzy"> <span data-i18n="fuzzy">Fuzzy</span></label>
-  <label class="preview-slider-wrap" title="Textrader per fras i listan" data-i18n-title="toolbar.previewLines">≣<input type="range" id="previewLinesSlider" min="1" max="20" step="1" value="1"><span id="previewLinesVal">1</span></label>
+  <button class="tb-btn ghost hidden" id="btnAiSearch" data-i18n="aiSearch.btn">✨ AI-sök</button>
   <div class="sep"></div>
   <button class="tb-btn" id="btnAddNew" data-i18n="btn.new">＋ Ny fras</button>
-  <span id="phraseCount">0 fraser</span>
   <div class="sep"></div>
-  <button class="tb-btn ghost hidden" id="btnAiSearch" data-i18n="aiSearch.btn">✨ AI-sök</button>
   <button class="tb-btn ghost" id="btnRecentToggle" data-i18n="recent.off">🕐 Senast</button>
-  <button class="tb-btn ghost icon-btn" id="btnCompact"       title="Kompakt läge" data-i18n-title="tt.compact">≡</button>
-  <button class="tb-btn ghost icon-btn" id="btnToggleSidebar" title="Dölj sidopanel" data-i18n-title="tt.toggleSidebar">◀</button>
+  <!-- View options (list density, preview lines, sidebar) live behind one button -->
+  <div class="view-menu-wrap">
+    <button class="tb-btn ghost icon-btn" id="btnViewMenu" title="Vyalternativ" data-i18n-title="tt.viewMenu">⋮</button>
+    <div id="viewMenu" class="view-menu hidden">
+      <label class="vm-row preview-slider-wrap" title="Textrader per fras i listan" data-i18n-title="toolbar.previewLines">
+        <span data-i18n="view.previewLines">≣ Rader per fras</span>
+        <input type="range" id="previewLinesSlider" min="1" max="20" step="1" value="1"><span id="previewLinesVal">1</span>
+      </label>
+      <button class="vm-row" id="btnCompact" title="Kompakt läge" data-i18n-title="tt.compact"><span data-i18n="view.compact">≡ Kompakt läge</span></button>
+      <button class="vm-row" id="btnToggleSidebar" title="Dölj sidopanel" data-i18n-title="tt.toggleSidebar"><span class="vm-arrow">◀</span> <span data-i18n="view.sidebar">Sidopanel</span></button>
+      <!-- Underhåll is a set of one-off commands, not settings — so it lives here
+           rather than under Inställningar, which is for things you set and save. -->
+      <button class="vm-row" id="btnTools" title="Underhållsverktyg" data-i18n-title="tt.tools"><span data-i18n="view.tools">🛠 Verktyg</span></button>
+    </div>
+  </div>
   <button class="tb-btn ghost" id="btnSettings" data-i18n="btn.settings" title="Inställningar" data-i18n-title="nav.settingsTip">⚙ Inställningar</button>
-  <button class="tb-btn ghost" id="btnFileSettings" data-i18n="btn.fileSettings" title="Filinställningar för vald fil" data-i18n-title="tt.fileSettings">📄 Filinst.</button>
   <button class="tb-btn ghost enc-lock-btn hidden" id="btnEncLock" title="Krypterade filer är låsta — klicka för att låsa upp">🔒 Låst</button>
 </div>
 
@@ -84,13 +94,11 @@
       <ul class="settings-cat-list filter-list">
         <li data-settings="general"  ><span class="li-name" data-i18n="nav.general">Allmänt</span></li>
         <li data-settings="folders"  class="selected"><span class="li-name" data-i18n="nav.folders">Frasmappar</span></li>
+        <li data-settings="spell"   ><span class="li-name" data-i18n="nav.spell">Stavningskontroll</span></li>
         <li data-settings="hotkeys" ><span class="li-name" data-i18n="nav.hotkeys">Kortkommandon</span></li>
         <li data-settings="popup"   ><span class="li-name" data-i18n="nav.popup">Popup</span></li>
         <li data-settings="dynamic" ><span class="li-name" data-i18n="nav.dynamic">Dynamiska fält</span></li>
         <li data-settings="ai"      ><span class="li-name" data-i18n="nav.ai">AI (Claude)</span></li>
-        <li data-settings="maint"   ><span class="li-name" data-i18n="nav.maint">Underhåll</span></li>
-        <li data-settings="spell"   ><span class="li-name" data-i18n="nav.spell">Stavningskontroll</span></li>
-        <li data-settings="enc"     ><span class="li-name" data-i18n="nav.enc">Krypterade fraser</span></li>
       </ul>
     </div>
 
@@ -160,6 +168,21 @@
           </div>
 
           <div class="sp-row" style="margin-top:12px">
+            <label class="sp-label" data-i18n="gen.pasteMode">Infogningsmetod</label>
+            <select id="pasteMode" class="field-input sp-input">
+              <option value="auto" data-i18n="gen.paste.auto">Auto — urklipp för långa texter, tangenter för korta</option>
+              <option value="always" data-i18n="gen.paste.always">Alltid urklipp</option>
+              <option value="never" data-i18n="gen.paste.never">Alltid tangenter</option>
+            </select>
+            <p class="sp-desc" style="margin-top:4px" data-i18n="gen.pasteMode.desc">Tangenter skickas som ett enda block och är oftast snabbast. Urklipp kräver Ctrl+V, vilket tar märkbart längre tid när flera program avlyssnar tangentbordet — men klarar mycket långa texter bättre.</p>
+          </div>
+          <div class="sp-row" id="pasteMinLenRow">
+            <label class="sp-label" data-i18n="gen.pasteMinLen">Urklippsgräns (tecken)</label>
+            <input type="number" id="pasteMinLen" class="field-input sp-input" min="1" max="500" style="width:80px">
+            <span class="sp-desc" style="margin-left:8px" data-i18n="gen.pasteMinLen.desc">Texter kortare än detta skrivs tecken för tecken; längre klistras in via urklipp. Högre värde = mindre urklippsanvändning.</span>
+          </div>
+
+          <div class="sp-row" style="margin-top:12px">
             <label class="sp-label" data-i18n="gen.sidebar">Sidebar-layout</label>
             <div class="gen-option-row">
               <label class="gen-radio-opt"><input type="radio" name="genSidebar" id="genSidebarTabs"    value="tabs"    checked> <span data-i18n="gen.sidebar.tabs">Flikar</span></label>
@@ -210,23 +233,37 @@
       <!-- ── Frasmappar ── -->
       <div id="spFolders" class="settings-page">
         <h2 class="page-title" data-i18n="sp.folders.title">Frasmappar</h2>
+
+        <div class="sp-section-title" data-i18n="folders.active">Aktiva frasmappar</div>
         <p class="sp-desc" data-i18n="folders.desc">Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.</p>
         <ul id="folderList" class="folder-list" style="margin-top:10px"></ul>
         <button class="tb-btn" id="btnAddFolder" style="margin:12px 0 0" data-i18n="folders.add">＋ Lägg till mapp</button>
 
         <div class="sp-section-title" style="margin-top:24px" data-i18n="packs.title">Ladda ner fraspaket</div>
         <p class="sp-desc" data-i18n="packs.desc">Färdiga fraspaket från ahk-phrases-repot. Valda paket laddas ner och läggs automatiskt till som frasmappar.</p>
-        <div class="sp-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span data-i18n="packs.saveTo" style="font-size:12px">Sparas i:</span>
-          <span id="packDlFolderLabel" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2);font-size:12px"></span>
-          <button class="tb-btn" id="btnChoosePackFolder" data-i18n="spell.chooseFolder">Välj mapp…</button>
-        </div>
         <div id="phrasePackIndex" class="wl-index-box"></div>
-        <div class="sp-row sp-row-btns" style="margin-top:6px;gap:6px">
+        <!-- Destination sits next to the download button so it is obvious
+             what the path applies to. -->
+        <div class="sp-row sp-dl-row" style="margin-top:6px">
           <button class="tb-btn" id="btnDownloadPhrasePacks" disabled data-i18n="spell.dlSelected">↓ Ladda ner valda</button>
+          <span class="dl-dest">
+            <span data-i18n="packs.saveTo">Sparas i:</span>
+            <span id="packDlFolderLabel"></span>
+          </span>
+          <button class="tb-btn" id="btnChoosePackFolder" data-i18n="spell.chooseFolder">Välj mapp…</button>
           <button class="tb-btn" id="btnRefreshPhrasePacks" style="margin-left:auto" data-i18n="spell.refreshIndex">↺ Uppdatera lista</button>
         </div>
         <div id="phrasePackStatus" class="sp-status" style="margin-top:4px"></div>
+
+        <div class="sp-section-title" style="margin-top:24px" data-i18n="sp.enc.title">Krypterade fraser (.enc)</div>
+        <p class="sp-desc" data-i18n="enc.desc">Krypterade frasfiler ligger i samma frasmappar som vanliga .ahk-filer.</p>
+        <div id="encStatus" class="sp-status" style="margin:8px 0 10px"></div>
+        <div class="sp-maint-grid">
+          <button class="tb-btn ghost" data-enc="import" data-i18n="enc.import">Importera från Excel…</button>
+          <button class="tb-btn ghost" data-enc="lockFile">.ahk → .enc…</button>
+          <button class="tb-btn ghost" data-enc="unlockFile">.enc → .ahk…</button>
+          <button class="tb-btn ghost" id="btnEncToggle">Lås upp</button>
+        </div>
       </div>
 
       <!-- ── Kortkommandon ── -->
@@ -314,7 +351,7 @@
           </div>
 
           <div class="sp-row sp-row-btns">
-            <button class="tb-btn" id="btnSaveHotkeys" data-i18n="btn.saveReload">Spara &amp; ladda om</button>
+            <button class="tb-btn" id="btnSaveHotkeys" data-i18n="btn.saveOnly">Spara</button>
           </div>
         </div>
       </div>
@@ -359,7 +396,7 @@
           <p class="sp-desc" data-i18n="pop.tip">Tips: vänsterklick i popupen infogar förslaget; högerklick öppnar frasen i huvud-GUIt.</p>
 
           <div class="sp-row sp-row-btns">
-            <button class="tb-btn" id="btnSavePopup" data-i18n="btn.saveReload">Spara &amp; ladda om</button>
+            <button class="tb-btn" id="btnSavePopup" data-i18n="btn.saveOnly">Spara</button>
           </div>
         </div>
       </div>
@@ -408,20 +445,6 @@
               placeholder="Bakgrund|Ärende|Bedömning|Åtgärd|Sammanfattning"></textarea>
           </div>
 
-          <div class="sp-row">
-            <label class="sp-label" data-i18n="dyn.pasteMode">Infogningsmetod</label>
-            <select id="pasteMode" class="field-input sp-input">
-              <option value="auto" data-i18n="dyn.paste.auto">Auto — urklipp för långa texter, tangenter för korta</option>
-              <option value="always" data-i18n="dyn.paste.always">Alltid urklipp (snabbt)</option>
-              <option value="never" data-i18n="dyn.paste.never">Alltid tangenter (långsamt)</option>
-            </select>
-          </div>
-          <div class="sp-row" id="pasteMinLenRow">
-            <label class="sp-label" data-i18n="dyn.pasteMinLen">Urklippsgräns (tecken)</label>
-            <input type="number" id="pasteMinLen" class="field-input sp-input" min="1" max="500" style="width:80px">
-            <span class="sp-desc" style="margin-left:8px" data-i18n="dyn.pasteMinLen.desc">Texter kortare än detta skickas tecken för tecken; längre klistras in via urklipp.</span>
-          </div>
-
           <div class="sp-row sp-row-btns">
             <button class="tb-btn" id="btnSaveDynamic" data-i18n="btn.saveOnly">Spara</button>
           </div>
@@ -454,11 +477,10 @@
             <label class="sp-label" data-i18n="ai.exclude">Exkludera (ett mönster per rad)</label>
             <textarea id="aiExclude" class="field-input sp-input" rows="3" spellcheck="false" placeholder="t.ex. känslig_mapp" data-i18n-ph="ai.exclude.ph"></textarea>
           </div>
+          <div id="aiUsage" class="sp-status"></div>
           <div class="sp-row sp-row-btns">
-            <button class="tb-btn" id="btnSaveAiSettings" data-i18n="btn.saveOnly">Spara</button>
             <button class="tb-btn ghost" id="btnResetAiUsage" data-i18n="ai.resetUsage">Nollställ statistik</button>
           </div>
-          <div id="aiUsage" class="sp-status"></div>
 
           <hr class="sp-divider">
           <h3 class="sp-subsection-title" data-i18n="ai.llm.title">Lokal LLM</h3>
@@ -483,6 +505,12 @@
             <input type="password" id="llmApiKey" class="field-input sp-input" placeholder="ollama  /  lm-studio  /  tomt" spellcheck="false">
           </div>
           <div id="llmStatus" class="sp-status hidden"></div>
+
+          <!-- One Spara at the bottom: it saves the Claude fields AND the local-LLM
+               fields below it, which the old mid-page placement hid. -->
+          <div class="sp-row sp-row-btns" style="margin-top:20px">
+            <button class="tb-btn" id="btnSaveAiSettings" data-i18n="btn.saveOnly">Spara</button>
+          </div>
         </div>
       </div>
 
@@ -550,68 +578,53 @@
       </div>
 
       <!-- ── Stavningskontroll ── -->
+      <!-- Deliberately built as a mirror of Frasmappar above: same section order
+           (own folders first, downloads second), same .sp-dl-row for the download
+           destination, one Spara at the bottom. -->
       <div id="spSpell" class="settings-page hidden">
         <h2 class="page-title" data-i18n="sp.spell.title">Stavningskontroll</h2>
-        <div class="sp-form">
-          <div class="sp-row">
-            <label class="toggle-wrap"><input type="checkbox" id="spellEnabled" checked> <span data-i18n="spell.enable">Aktivera inbyggd stavningskontroll i fras- och kommentarfälten</span></label>
-          </div>
-          <div class="sp-row sp-row-btns">
-            <button class="tb-btn" id="btnSaveSpellEnabled" data-i18n="btn.saveOnly">Spara</button>
-          </div>
 
-          <div class="sp-section-title" style="margin-top:8px" data-i18n="spell.secDownload">Ladda ner ordlistor</div>
-          <p class="sp-desc" data-i18n-html="spell.dlDesc">Hämta valfria ordlistor från GitHub-repot <code>ibst1/wordlists</code>. Välj en målmapp — den läggs sedan automatiskt till som ordlistemapp i Expanto.</p>
-          <div class="sp-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span id="wordlistDlFolderLabel" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2);font-size:12px" data-i18n="spell.noFolder">(ingen mapp vald)</span>
-            <button class="tb-btn" id="btnChooseWordlistFolder" data-i18n="spell.chooseFolder">Välj mapp…</button>
-          </div>
-          <div id="wordlistIndex" class="wl-index-box"></div>
-          <div class="sp-row sp-row-btns" style="margin-top:6px;gap:6px">
-            <button class="tb-btn" id="btnDownloadWordlists" disabled data-i18n="spell.dlSelected">↓ Ladda ner valda</button>
-            <button class="tb-btn" id="btnRefreshWordlistIndex" style="margin-left:auto" data-i18n="spell.refreshIndex">↺ Uppdatera lista</button>
-          </div>
-          <div id="wordlistDlStatus" class="sp-status" style="margin-top:4px"></div>
-          <hr class="sp-divider" style="margin-top:12px">
+        <div class="sp-row" style="margin-bottom:4px">
+          <label class="toggle-wrap"><input type="checkbox" id="spellEnabled" checked> <span data-i18n="spell.enable">Aktivera inbyggd stavningskontroll i fras- och kommentarfälten</span></label>
+        </div>
 
-          <div class="sp-section-title" style="margin-top:8px" data-i18n="spell.secFolders">Ordlistemappar</div>
-          <p class="sp-desc" data-i18n="spell.foldersDesc">Lägg till mappar med egna ordlistor (UTF-8, ett ord per rad). Alla .txt-filer i varje mapp laddas och läggs ovanpå webbläsarens inbyggda stavningskontroll. Används för facktermer och domänspecifika ord.</p>
-          <div class="sp-row">
-            <ul id="dictFolderList" class="folder-list" style="margin-top:4px"></ul>
-            <button class="tb-btn" id="btnAddDictFolder" style="margin-top:8px" data-i18n="folders.add">＋ Lägg till mapp</button>
-          </div>
-          <div id="dictStatus" class="sp-status"></div>
+        <div class="sp-section-title" data-i18n="spell.secFolders">Ordlistemappar</div>
+        <p class="sp-desc" data-i18n="spell.foldersDesc">Lägg till mappar med egna ordlistor (UTF-8, ett ord per rad). Alla .txt-filer i varje mapp laddas och läggs ovanpå webbläsarens inbyggda stavningskontroll. Används för facktermer och domänspecifika ord.</p>
+        <ul id="dictFolderList" class="folder-list" style="margin-top:10px"></ul>
+        <button class="tb-btn" id="btnAddDictFolder" style="margin:12px 0 0" data-i18n="folders.add">＋ Lägg till mapp</button>
+        <div id="dictStatus" class="sp-status"></div>
 
-          <div class="sp-section-title" style="margin-top:20px" data-i18n="spell.secCompound">Svenska sammansättningar</div>
-          <div class="sp-row">
-            <label class="toggle-wrap"><input type="checkbox" id="compoundEnabled"> <span data-i18n="spell.compound">Godkänn svenska sammansättningar i stavningskollen</span></label>
-            <p class="sp-desc" style="margin-top:4px" data-i18n="spell.compoundDesc">Långa okända ord som går att dela i kända ordlisteord (ev. med foge-s) flaggas inte som stavfel.</p>
-          </div>
-          <div class="sp-row">
-            <label class="sp-label" data-i18n="spell.compoundMinLen">Minsta ordlängd att försöka dela</label>
-            <input type="number" class="field-input" id="compoundMinLen" min="4" max="30" value="12" style="max-width:80px">
-          </div>
-          <div class="sp-row sp-row-btns">
-            <button class="tb-btn" id="btnSaveCompound" data-i18n="btn.saveOnly">Spara</button>
-          </div>
-          <div id="compoundStatus" class="sp-status"></div>
+        <div class="sp-section-title" style="margin-top:24px" data-i18n="spell.secDownload">Ladda ner ordlistor</div>
+        <p class="sp-desc" data-i18n-html="spell.dlDesc">Hämta valfria ordlistor från GitHub-repot <code>ibst1/wordlists</code>. Välj en målmapp — den läggs sedan automatiskt till som ordlistemapp i Expanto.</p>
+        <div id="wordlistIndex" class="wl-index-box"></div>
+        <div class="sp-row sp-dl-row" style="margin-top:6px">
+          <button class="tb-btn" id="btnDownloadWordlists" disabled data-i18n="spell.dlSelected">↓ Ladda ner valda</button>
+          <span class="dl-dest">
+            <span data-i18n="packs.saveTo">Sparas i:</span>
+            <span id="wordlistDlFolderLabel" data-i18n="spell.noFolder">(ingen mapp vald)</span>
+          </span>
+          <button class="tb-btn" id="btnChooseWordlistFolder" data-i18n="spell.chooseFolder">Välj mapp…</button>
+          <button class="tb-btn" id="btnRefreshWordlistIndex" style="margin-left:auto" data-i18n="spell.refreshIndex">↺ Uppdatera lista</button>
+        </div>
+        <div id="wordlistDlStatus" class="sp-status" style="margin-top:4px"></div>
+
+        <div class="sp-section-title" style="margin-top:24px" data-i18n="spell.secCompound">Svenska sammansättningar</div>
+        <p class="sp-desc" data-i18n="spell.compoundDesc">Långa okända ord som går att dela i kända ordlisteord (ev. med foge-s) flaggas inte som stavfel.</p>
+        <div class="sp-row" style="margin-top:8px">
+          <label class="toggle-wrap"><input type="checkbox" id="compoundEnabled"> <span data-i18n="spell.compound">Godkänn svenska sammansättningar i stavningskollen</span></label>
+        </div>
+        <div class="sp-row">
+          <label class="sp-label" data-i18n="spell.compoundMinLen">Minsta ordlängd att försöka dela</label>
+          <input type="number" class="field-input" id="compoundMinLen" min="4" max="30" value="12" style="max-width:80px">
+        </div>
+        <div id="compoundStatus" class="sp-status"></div>
+
+        <div class="sp-row sp-row-btns" style="margin-top:20px">
+          <button class="tb-btn" id="btnSaveSpell" data-i18n="btn.saveOnly">Spara</button>
         </div>
       </div>
 
       <!-- ── Krypterade fraser ── -->
-      <div id="spEnc" class="settings-page hidden">
-        <h2 class="page-title" data-i18n="sp.enc.title">Krypterade fraser (.enc)</h2>
-        <div class="sp-form">
-          <div id="encStatus" class="sp-status" style="margin-bottom:10px"></div>
-          <div class="sp-maint-grid">
-            <button class="tb-btn ghost" data-enc="import" data-i18n="enc.import">Importera från Excel…</button>
-            <button class="tb-btn ghost" data-enc="lockFile">.ahk → .enc…</button>
-            <button class="tb-btn ghost" data-enc="unlockFile">.enc → .ahk…</button>
-            <button class="tb-btn ghost" id="btnEncToggle">Lås upp</button>
-          </div>
-        </div>
-      </div>
-
     </div><!-- /#settingsMain -->
   </div><!-- /#contentArea -->
 
@@ -645,10 +658,6 @@
         <div id="triggerDictWarn" class="dup-warn dict-warn hidden"></div>
       </div>
       <div class="field-group">
-        <label data-ak-for="fApps" data-i18n-html="field.apps.html">Appar <span style="font-weight:400;text-transform:none">(komma-sep; process utan .exe eller title:delav­titel; tomt = alla)</span></label>
-        <input id="fApps" class="field-input mono" type="text" spellcheck="false" placeholder="notepad, title:Min app">
-      </div>
-      <div class="field-group">
         <div class="field-label-row">
           <label data-ak-for="fPhrase" data-i18n="field.phrase">Fras</label>
           <button type="button" id="btnAddAlt" class="alt-add-btn" title="Lägg till en alternativ frastext" data-i18n-title="alt.add.tip" tabindex="-1">＋</button>
@@ -656,7 +665,6 @@
         <input type="text" id="fMainName" class="field-input alt-name-input hidden" spellcheck="false" placeholder="Namn på huvudfrasen (valfritt), t.ex. Formell" data-i18n-ph="alt.name.main.ph">
         <textarea id="fPhrase" class="field-input" rows="5" spellcheck="true"></textarea>
         <div id="fAltList"></div>
-        <label class="toggle-wrap phrase-trim-wrap"><input type="checkbox" id="phraseTrim"> <span data-i18n="field.trim">Trimma (ta bort inledande/avslutande blanksteg vid sparande)</span></label>
       </div>
       <div class="field-group">
         <label data-ak-for="fCat" data-i18n="field.cat">Kategori</label>
@@ -667,6 +675,20 @@
         <label data-ak-for="fTags" data-i18n-html="field.tags.html">Taggar <span style="font-weight:400;text-transform:none">(komma-sep.)</span></label>
         <input id="fTags" class="field-input" type="text" spellcheck="false">
         <div id="tagSuggestChips" class="suggest-chips hidden"></div>
+      </div>
+
+      <!-- Everything below is used rarely: collapsed behind "Mer" (Ctrl+M). -->
+      <button type="button" id="btnMoreFields" class="more-toggle" aria-expanded="false"
+              title="Visa fler fält (Ctrl+M)" data-i18n-title="tt.moreFields">
+        <span class="more-arrow">▸</span> <span data-i18n="field.more">Mer</span>
+      </button>
+      <div id="advFields" class="hidden">
+      <div class="field-group">
+        <label class="toggle-wrap phrase-trim-wrap"><input type="checkbox" id="phraseTrim"> <span data-i18n="field.trim">Trimma (ta bort inledande/avslutande blanksteg vid sparande)</span></label>
+      </div>
+      <div class="field-group">
+        <label data-ak-for="fApps" data-i18n-html="field.apps.html">Appar <span style="font-weight:400;text-transform:none">(komma-sep; process utan .exe eller title:delav­titel; tomt = alla)</span></label>
+        <input id="fApps" class="field-input mono" type="text" spellcheck="false" placeholder="notepad, title:Min app">
       </div>
       <div class="field-group">
         <label data-ak-for="fLang" data-i18n="field.lang">Språk</label>
@@ -697,11 +719,12 @@
         <label data-i18n="field.status">Status</label>
         <label class="toggle-wrap"><input type="checkbox" id="fDisabled"> <span data-i18n="disabled">Inaktiverad</span></label>
       </div>
-      <div id="customFieldsGroup" class="hidden"></div>
       <div class="field-group" id="fMetaGroup">
         <label data-i18n="field.info">Info</label>
         <div id="fMeta" class="field-meta"></div>
       </div>
+      </div><!-- /#advFields -->
+      <div id="customFieldsGroup" class="hidden"></div>
     </div>
     <div id="detailActions">
       <button class="action-btn save" id="btnSave" data-i18n="btn.save" data-i18n-title="btn.save.tip" title="Spara/uppdatera och infoga (Ctrl+Enter)">Spara &amp; infoga</button>
@@ -957,6 +980,18 @@ Titelmönster:   \[ID (\d+) (.+?)\]</pre>
     <p>Fungerar mot vilket program som helst som visar värden i fönstertiteln.</p>
   </div>
 </div>
+<!-- ── Status bar ─────────────────────────────────────────────────────────
+     Left: how much of the library you are looking at, and — only while something
+     is actually filtering — the button that gets you back to all of it.
+     Middle: while the editor is open, the exact line that will be written.
+     Right: transient confirmations (saved, applied). -->
+<div id="statusBar">
+  <span id="statusCount"></span>
+  <button id="btnClearFilters" class="status-chip hidden" data-i18n="status.clearFilters">✕ Rensa alla filter</button>
+  <code id="statusLine"></code>
+  <span id="statusMsg"></span>
+</div>
+
 <div id="colVisMenu" class="dup-to-menu hidden"></div>
 <div id="dupToMenu" class="dup-to-menu hidden">
   <div class="dtm-section" data-i18n="dtm.dup">Duplicera till</div>
