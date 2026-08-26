@@ -258,6 +258,28 @@ Put placeholders in a phrase; they resolve when the phrase is inserted.
 | `{time}` | current time (HH:mm) |
 | `{clipboard}` | current clipboard contents |
 | `{cursor}` | caret position after insertion |
+| `{run:command}` | runs the command after the insert — never typed (see below) |
+
+### Run fields
+
+`{run:command}` starts a program when the phrase is inserted. The field itself is
+stripped from the typed text, and the command runs **after** the insertion has
+finished, so a program stealing focus cannot swallow the phrase text. A phrase
+can be nothing but a run field — a trigger that only launches something:
+
+```
+{run:"C:\Tools\Encore\Encore.exe" "Rapportmall"}
+```
+
+…and typing that trigger plays the [Encore](https://github.com/ibst1/encore)
+macro `Rapportmall`. `{date}`, `{time}` and `{clipboard}` are resolved inside
+the command before it runs; other dynamic fields are not.
+
+**Safety**: phrases can come from downloaded phrase packs, so a command is
+never executed silently — the first time a given command line runs, Expanto
+asks for confirmation (once per command per session). Cancelling a field
+dialog also cancels the phrase's run fields. The command cannot contain a
+`}` character.
 
 ### Free-text fields
 
