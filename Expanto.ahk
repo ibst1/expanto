@@ -3442,6 +3442,8 @@ _CollectManualDynFields(text) {
             continue
         if (StrLower(SubStr(name, 1, 4)) = "run:")   ; {run:...} is a command, not a field
             continue
+        if _IsDateField(name)   ; {datum+1:yyMMdd} etc. resolve automatically
+            continue
         seen[name] := true
         fields.Push(name)
     }
@@ -3949,10 +3951,47 @@ CoupleIdentityGuard(filepath) {
     return MsgBox(msg, "Identitet ändrad", "YesNo Icon!") = "Yes"
 }
 
+; ── Datum/tid/vecka-fält, svenska och engelska namn likvärdiga ────────────────
+;   {date}/{datum}                dagens datum, yyyy-MM-dd
+;   {datum:yyMMdd}                valfritt FormatTime-format
+;   {datum+1} / {datum-1:yyMMdd}  offset i dagar (imorgon/igår)
+;   {time}/{tid}, {tid:HHmm}      klockslag; offset i timmar ({tid+1})
+;   {week}/{vecka}/{veckonummer}  ISO-veckonummer; offset i veckor ({vecka+2})
+ResolveDateFields(phrase) {
+    pos := 1
+    while RegExMatch(phrase,
+        "i)\{(date|datum|time|tid|week|vecka|veckonummer)([+-]\d+)?(?::([^}]+))?\}", &m, pos) {
+        base := StrLower(m[1])
+        off  := m[2] != "" ? Integer(m[2]) : 0
+        fmt  := m[3]
+        t := A_Now
+        if (base = "time" || base = "tid") {
+            if off
+                t := DateAdd(t, off, "Hours")
+            rep := FormatTime(t, fmt != "" ? fmt : "HH:mm")
+        } else if (base = "date" || base = "datum") {
+            if off
+                t := DateAdd(t, off, "Days")
+            rep := FormatTime(t, fmt != "" ? fmt : "yyyy-MM-dd")
+        } else {   ; week/vecka/veckonummer
+            if off
+                t := DateAdd(t, off * 7, "Days")
+            rep := fmt != "" ? FormatTime(t, fmt)
+                 : LTrim(SubStr(FormatTime(t, "YWeek"), 5), "0")   ; ISO-vecka utan år
+        }
+        phrase := SubStr(phrase, 1, m.Pos - 1) rep SubStr(phrase, m.Pos + m.Len)
+        pos := m.Pos + StrLen(rep)
+    }
+    return phrase
+}
+
+; Är {namn} ett datum/tid/vecka-automatfält (och alltså inget ifyllnadsfält)?
+_IsDateField(name) =>
+    RegExMatch(name, "i)^(date|datum|time|tid|week|vecka|veckonummer)([+-]\d+)?(:.+)?$") > 0
+
 ExpandDynamic(phrase, filepath := "", trigger := "", forceMode := "") {
     global g_dynMode, g_dynAppModes, g_coupleLastTick, g_pendingRuns
-    phrase := StrReplace(phrase, "{date}", FormatTime(, "yyyy-MM-dd"))
-    phrase := StrReplace(phrase, "{time}", FormatTime(, "HH:mm"))
+    phrase := ResolveDateFields(phrase)
     ; Only touch the clipboard when the phrase actually asks for it. Reading
     ; A_Clipboard forces the OS to render CF_UNICODETEXT, which costs real time when
     ; something large is on the clipboard and can block outright while another app

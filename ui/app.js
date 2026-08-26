@@ -239,6 +239,12 @@ const LANG = {
     'field.trigger.html': '<span data-ak-text>Trigger</span> / Alias <span style="font-weight:400;text-transform:none">(komma-sep.; första = trigger, övriga = alias)</span>',
     'field.apps.html': '<span data-ak-text>Appar</span> <span style="font-weight:400;text-transform:none">(komma-sep; process utan .exe eller title:del­av­titel; tomt = alla)</span>',
     'field.phrase': 'Fras', 'field.cat': 'Kategori',
+    'field.insert.tip': 'Infoga dynamiskt fält',
+    'fins.date': 'Dagens datum — {datum}', 'fins.dateShort': 'Datum kort — {datum:yyMMdd}',
+    'fins.tomorrow': 'Imorgon — {datum+1}', 'fins.time': 'Klockslag — {tid}',
+    'fins.week': 'Veckonummer — {vecka}', 'fins.clip': 'Urklipp — {clipboard}',
+    'fins.cursor': 'Markörposition — {cursor}', 'fins.field': 'Ifyllnadsfält — {fältnamn}',
+    'fins.choice': 'Valfält — {val=[a/b/c]}', 'fins.run': 'Kör kommando — {run:…}',
     'alt.add.tip': 'Lägg till en alternativ frastext (välj vilken vid infogning)',
     'alt.remove.tip': 'Ta bort denna alternativtext',
     'alt.ph': 'Alternativ frastext…',
@@ -680,6 +686,12 @@ const LANG = {
     'field.trigger.html': '<span data-ak-text>Trigger</span> / Alias <span style="font-weight:400;text-transform:none">(comma-sep.; first = trigger, rest = aliases)</span>',
     'field.apps.html': '<span data-ak-text>Apps</span> <span style="font-weight:400;text-transform:none">(comma-sep; process without .exe or title:parttitle; empty = all)</span>',
     'field.phrase': 'Phrase', 'field.cat': 'Category',
+    'field.insert.tip': 'Insert a dynamic field',
+    'fins.date': "Today's date — {datum}", 'fins.dateShort': 'Short date — {datum:yyMMdd}',
+    'fins.tomorrow': 'Tomorrow — {datum+1}', 'fins.time': 'Time of day — {tid}',
+    'fins.week': 'Week number — {vecka}', 'fins.clip': 'Clipboard — {clipboard}',
+    'fins.cursor': 'Caret position — {cursor}', 'fins.field': 'Fill-in field — {fältnamn}',
+    'fins.choice': 'Choice field — {val=[a/b/c]}', 'fins.run': 'Run a command — {run:…}',
     'alt.add.tip': 'Add an alternative phrase text (choose which one on insert)',
     'alt.remove.tip': 'Remove this alternative text',
     'alt.ph': 'Alternative phrase text…',
@@ -2266,6 +2278,31 @@ function bindUI() {
     else if (act === 'batch') aiBatchVisible();
   });
   document.getElementById('btnBulkAi').addEventListener('click', aiSuggestBulk);
+  document.getElementById('btnFieldMenu').addEventListener('click', e => {
+    e.stopPropagation();
+    const menu = document.getElementById('fieldMenu');
+    if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+    _positionDropdown(menu, e.currentTarget.getBoundingClientRect());
+    menu.classList.remove('hidden');
+  });
+  document.getElementById('fieldMenu').addEventListener('click', e => {
+    const item = e.target.closest('[data-fins]');
+    if (!item) return;
+    document.getElementById('fieldMenu').classList.add('hidden');
+    const ta  = document.getElementById('fPhrase');
+    const ins = item.dataset.fins;
+    const st  = ta.selectionStart ?? ta.value.length;
+    ta.setRangeText(ins, st, ta.selectionEnd ?? st, 'end');
+    // select the placeholder part so it can be typed over immediately
+    const sel = item.dataset.fsel;
+    if (sel) {
+      const i = ta.value.indexOf(sel, st);
+      if (i >= 0) ta.setSelectionRange(i, i + sel.length);
+    }
+    ta.focus();
+    ta.dispatchEvent(new Event('input', { bubbles: true }));   // dirty-state + preview
+  });
+  document.addEventListener('click', () => document.getElementById('fieldMenu')?.classList.add('hidden'));
   document.addEventListener('click', () => document.getElementById('aiDropMenu')?.classList.add('hidden'));
 
   // File settings are opened from the file's right-click menu (the toolbar
