@@ -667,6 +667,7 @@
       <div class="field-group">
         <div class="field-label-row">
           <label data-ak-for="fPhrase" data-i18n="field.phrase">Fras</label>
+          <button type="button" id="btnFieldMenu" class="alt-add-btn" title="Infoga dynamiskt fält" data-i18n-title="field.insert.tip" tabindex="-1">{…}</button>
           <button type="button" id="btnAddAlt" class="alt-add-btn" title="Lägg till en alternativ frastext" data-i18n-title="alt.add.tip" tabindex="-1">＋</button>
         </div>
         <input type="text" id="fMainName" class="field-input alt-name-input hidden" spellcheck="false" placeholder="Namn på huvudfrasen (valfritt), t.ex. Formell" data-i18n-ph="alt.name.main.ph">
@@ -789,6 +790,22 @@
       <button class="action-btn del" id="btnBulkDelete" data-i18n="bulk.delete">Ta bort</button>
     </div>
   </aside>
+
+  <!-- Dynamic-field insert menu -->
+  <div id="fieldMenu" class="ctx-menu hidden">
+    <div class="ctx-item" data-fins="{datum}" data-i18n="fins.date">Dagens datum — {datum}</div>
+    <div class="ctx-item" data-fins="{datum:yyMMdd}" data-i18n="fins.dateShort">Datum kort — {datum:yyMMdd}</div>
+    <div class="ctx-item" data-fins="{datum+1}" data-i18n="fins.tomorrow">Imorgon — {datum+1}</div>
+    <div class="ctx-item" data-fins="{tid}" data-i18n="fins.time">Klockslag — {tid}</div>
+    <div class="ctx-item" data-fins="{vecka}" data-i18n="fins.week">Veckonummer — {vecka}</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-fins="{clipboard}" data-i18n="fins.clip">Urklipp — {clipboard}</div>
+    <div class="ctx-item" data-fins="{cursor}" data-i18n="fins.cursor">Markörposition — {cursor}</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-fins="{fältnamn}" data-fsel="fältnamn" data-i18n="fins.field">Ifyllnadsfält — {fältnamn}</div>
+    <div class="ctx-item" data-fins="{val=[a/b/c]}" data-fsel="a/b/c" data-i18n="fins.choice">Valfält — {val=[a/b/c]}</div>
+    <div class="ctx-item" data-fins="{run:kommando}" data-fsel="kommando" data-i18n="fins.run">Kör kommando — {run:…}</div>
+  </div>
 
   <!-- Save dropdown menu -->
   <div id="saveDropMenu" class="ctx-menu hidden">

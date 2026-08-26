@@ -254,11 +254,25 @@ Put placeholders in a phrase; they resolve when the phrase is inserted.
 
 | Placeholder | Result |
 |---|---|
-| `{date}` | today's date (YYYY-MM-DD) |
-| `{time}` | current time (HH:mm) |
+| `{date}` / `{datum}` | today's date (YYYY-MM-DD) |
+| `{time}` / `{tid}` | current time (HH:mm) |
+| `{week}` / `{vecka}` / `{veckonummer}` | ISO week number |
 | `{clipboard}` | current clipboard contents |
 | `{cursor}` | caret position after insertion |
 | `{run:command}` | runs the command after the insert — never typed (see below) |
+
+Date, time and week fields take an optional offset and an optional
+[FormatTime](https://www.autohotkey.com/docs/v2/lib/FormatTime.htm) format:
+
+```
+{datum:yyMMdd}      260826          {tid:HHmm}      2214
+{datum+1}           tomorrow        {datum-1:yyMMdd} yesterday, short
+{vecka}             35              {vecka+2}       two weeks ahead
+```
+
+Offsets are days for date, hours for time and weeks for week. The **{…}
+button** next to the phrase field inserts any of these (and the other field
+types) at the caret.
 
 ### Run fields
 
