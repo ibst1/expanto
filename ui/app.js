@@ -2282,6 +2282,28 @@ function bindUI() {
     e.stopPropagation();
     const menu = document.getElementById('fieldMenu');
     if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+    // the current file's file-specific fields go first, when it has any
+    const cont = document.getElementById('fieldMenuCustom');
+    cont.innerHTML = '';
+    const file = document.getElementById('fNewFile')?.value
+      || (g_selId && (g_phrases.find(x => x.id === g_selId) || {}).file) || '';
+    const fields = file ? _fileEditorFields(file) : [];
+    if (fields.length) {
+      const hdr = document.createElement('div');
+      hdr.className = 'fins-hdr';
+      hdr.textContent = T('customFields.title');
+      cont.appendChild(hdr);
+      for (const f of fields) {
+        const item = document.createElement('div');
+        item.className = 'ctx-item';
+        item.dataset.fins = '{' + f + '}';
+        item.textContent = f + ' — {' + f + '}';
+        cont.appendChild(item);
+      }
+      const sep = document.createElement('div');
+      sep.className = 'ctx-sep';
+      cont.appendChild(sep);
+    }
     _positionDropdown(menu, e.currentTarget.getBoundingClientRect());
     menu.classList.remove('hidden');
   });

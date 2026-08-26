@@ -1278,6 +1278,14 @@ textarea.field-input { min-height: 80px; }
 }
 .ctx-item:hover { background: var(--bg-hover); }
 .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+.fins-hdr {
+  padding: 5px 14px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-dim);
+  cursor: default;
+}
 .ctx-submenu { position: relative; }
 .ctx-submenu-trigger { display: flex; justify-content: space-between; align-items: center; }
 .ctx-submenu-trigger::after { content: '▶'; font-size: 9px; opacity: .6; margin-left: 12px; }

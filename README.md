@@ -272,7 +272,8 @@ Date, time and week fields take an optional offset and an optional
 
 Offsets are days for date, hours for time and weeks for week. The **{…}
 button** next to the phrase field inserts any of these (and the other field
-types) at the caret.
+types) at the caret — and when the current file has **file-specific fields**,
+they are listed at the top of the menu.
 
 ### Run fields
 
