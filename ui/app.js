@@ -1194,6 +1194,7 @@ let g_capturingKey     = false;
 let g_captureTarget    = null;
 let g_dynAppModes      = [];  // [{app, mode}]
 let g_fileSettingsFile = null;
+let g_lastFieldTa      = null;   // phrase textarea (main or alt) that last had focus
 let g_fileSettingsCache = {}; // path → {label, metaFields, defaultCat}
 
 const COL_ORDER = [
@@ -2278,6 +2279,15 @@ function bindUI() {
     else if (act === 'batch') aiBatchVisible();
   });
   document.getElementById('btnBulkAi').addEventListener('click', aiSuggestBulk);
+  // The menu inserts into the phrase box that last had focus — the main one
+  // or an alternative-phrase textarea. Tracked on focusin; mousedown on the
+  // button is prevented so opening the menu never blurs the textarea.
+  document.addEventListener('focusin', e => {
+    const t = e.target;
+    if (t && (t.id === 'fPhrase' || t.classList?.contains('alt-phrase-input')))
+      g_lastFieldTa = t;
+  });
+  document.getElementById('btnFieldMenu').addEventListener('mousedown', e => e.preventDefault());
   document.getElementById('btnFieldMenu').addEventListener('click', e => {
     e.stopPropagation();
     const menu = document.getElementById('fieldMenu');
@@ -2311,7 +2321,8 @@ function bindUI() {
     const item = e.target.closest('[data-fins]');
     if (!item) return;
     document.getElementById('fieldMenu').classList.add('hidden');
-    const ta  = document.getElementById('fPhrase');
+    const ta  = (g_lastFieldTa && document.contains(g_lastFieldTa))
+      ? g_lastFieldTa : document.getElementById('fPhrase');
     const ins = item.dataset.fins;
     const st  = ta.selectionStart ?? ta.value.length;
     ta.setRangeText(ins, st, ta.selectionEnd ?? st, 'end');
