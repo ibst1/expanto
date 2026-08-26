@@ -2,6 +2,27 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
+; Per-monitor-DPI v2: utan detta låses skalan vid processtart, och när en
+; skärm med annan skala kopplas in/ur bitmap-sträcks fönstret - fel skärpa
+; och WebView2-klick som hamnar bredvid pekaren. Måste sättas före första
+; fönstret. WM_DPICHANGED tar systemets föreslagna rect; Size-eventet
+; storleksändrar sedan WebView2-ytan.
+; OBS: process-nivån är LÅST av AutoHotkeys manifest (SYSTEM_AWARE) -
+; SetProcessDpiAwarenessContext ger ACCESS_DENIED. Trådnivån går dock att
+; ändra, och fönster ärver trådens kontext när de skapas. AHK kör allt på
+; en enda OS-tråd, så ett anrop här täcker alla fönster skriptet skapar.
+DllCall("SetThreadDpiAwarenessContext", "ptr", -4)
+OnMessage(0x02E0, _WmDpiChanged)
+_WmDpiChanged(wParam, lParam, msg, hwnd) {
+    global wv2Ctrl
+    x := NumGet(lParam, 0, "int"), y := NumGet(lParam, 4, "int")
+    r := NumGet(lParam, 8, "int"), b := NumGet(lParam, 12, "int")
+    DllCall("SetWindowPos", "ptr", hwnd, "ptr", 0, "int", x, "int", y
+        , "int", r - x, "int", b - y, "uint", 0x0214)   ; NOZORDER|NOACTIVATE|FRAMECHANGED
+    try SetTimer(() => ((IsSet(wv2Ctrl) && IsObject(wv2Ctrl)) ? wv2Ctrl.Fill() : 0), -80)   ; hängslen: fyll om WebView2-ytan
+    return 0
+}
+
 try
     TraySetIcon(A_ScriptDir "\app.ico")
 
