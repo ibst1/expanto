@@ -31,6 +31,7 @@ global HS_folders_ALL    := []
 global HS_ALL            := []
 global g_disabledFolders := []
 global g_hiddenFolders   := []   ; loaded but hidden from the file list
+global g_ignoreFolders   := []   ; subfolder names skipped when scanning a phrase folder
 global g_wv2Shown        := true
 global g_prevWinId       := 0    ; hwnd of active window before Expanto was shown
 global g_hkOpenGui       := ""   ; currently registered OpenGui hotkey string
@@ -126,6 +127,7 @@ global g_hintNumMod    := ""
 ; ── Load phrase data + register hotstrings ────────────────────────────────────
 LoadDisabledFolders()
 LoadHiddenFolders()
+LoadIgnoreFolders()
 populate_HS_files_ALL()
 Build_HS_ALL()
 init_hotstrings()
@@ -714,6 +716,16 @@ OnWebMessageReceived(sender, args) {
             DisabledFoldersRemove(id)
         else
             DisabledFoldersAdd(id)
+        ReloadPhrases()
+        _SafeSend(sender,"window.receiveSettings(" BuildSettingsJson() ")")
+
+    } else if (action = "saveIgnoreFolders") {
+        global g_ignoreFolders
+        g_ignoreFolders := []
+        for s in StrSplit(msg.Has("names") ? msg["names"] : "", "|")
+            if ((s := Trim(s)) != "")
+                g_ignoreFolders.Push(s)
+        SaveIgnoreFolders()
         ReloadPhrases()
         _SafeSend(sender,"window.receiveSettings(" BuildSettingsJson() ")")
 
@@ -2072,7 +2084,7 @@ BuildFilesJson() {
 }
 
 BuildSettingsJson() {
-    global HS_folders_ALL, g_disabledFolders, g_hiddenFolders, inifile
+    global HS_folders_ALL, g_disabledFolders, g_hiddenFolders, g_ignoreFolders, inifile
     folders := []
     seen := Map()
     ; active folders (already parsed)
@@ -2089,7 +2101,8 @@ BuildSettingsJson() {
         try p := IniRead(inifile, "PhraseFolders", s)
         folders.Push(Map("id", s, "path", p, "enabled", false))
     }
-    return JSON.Dump(Map("folders", folders, "hiddenFolders", g_hiddenFolders))
+    return JSON.Dump(Map("folders", folders, "hiddenFolders", g_hiddenFolders
+        , "ignoreFolders", ArrJoin(g_ignoreFolders, "|")))
 }
 
 DisabledFoldersAdd(id) {
@@ -2493,6 +2506,8 @@ HideFilesInFolderExcept(folderPath, keepPaths) {
         keep[StrLower(k)] := true
     for pattern in ["\*.ahk", "\*.enc"] {
         Loop Files, folderPath pattern, "R" {
+            if PathHasIgnoredSegment(A_LoopFileFullPath, folderPath)
+                continue
             if keep.Has(StrLower(A_LoopFileFullPath))
                 continue
             s := ReadFileSettings(A_LoopFileFullPath)
@@ -2533,6 +2548,8 @@ UnhideFilesInFolder(folderPath) {
         return
     for pattern in ["\*.ahk", "\*.enc"] {
         Loop Files, folderPath pattern, "R" {
+            if PathHasIgnoredSegment(A_LoopFileFullPath, folderPath)
+                continue
             s := ReadFileSettings(A_LoopFileFullPath)
             if (s.Has("hidden") && s["hidden"] != "") {
                 s["hidden"] := ""
@@ -2555,6 +2572,50 @@ SaveHiddenFolders() {
     IniWrite(ArrJoin(g_hiddenFolders, "|"), inifile, "folders_hidden", "paths")
 }
 
+; Archive and backup subfolders sit next to the live phrase files and hold old
+; copies of them. The folder scan is recursive, so without this every archived
+; copy would load as a duplicate of the phrase it was a backup of.
+LoadIgnoreFolders() {
+    global inifile, g_ignoreFolders
+    g_ignoreFolders := []
+    for s in StrSplit(IniRead(inifile, "General", "IgnoreFolders", IgnoreFoldersDefault()), "|")
+        if ((s := Trim(s)) != "")
+            g_ignoreFolders.Push(s)
+}
+
+SaveIgnoreFolders() {
+    global inifile, g_ignoreFolders
+    IniWrite(ArrJoin(g_ignoreFolders, "|"), inifile, "General", "IgnoreFolders")
+}
+
+IgnoreFoldersDefault() {
+    return "Backups|Backup|Archive|_archive|_gammalt"
+}
+
+; True when any directory level of path below root matches an ignored name.
+; The last segment is the file name itself and is never matched.
+PathHasIgnoredSegment(path, root) {
+    global g_ignoreFolders
+    if (g_ignoreFolders.Length = 0)
+        return false
+    rel := path
+    if (root != "") {
+        root := RTrim(root, "\")
+        if (SubStr(path, 1, StrLen(root)) = root)
+            rel := SubStr(path, StrLen(root) + 1)
+    }
+    parts := StrSplit(rel, "\")
+    Loop (parts.Length - 1) {
+        seg := Trim(parts[A_Index])
+        if (seg = "")
+            continue
+        for ign in g_ignoreFolders
+            if (seg = ign)
+                return true
+    }
+    return false
+}
+
 populate_HS_files_ALL() {
     global HS_folders_ALL
     HS_folders_ALL := []
@@ -2567,10 +2628,13 @@ populate_HS_files_ALL() {
         if FolderDisabled(folderId)
             continue
         folderObj := { id: folderId, path: folderPath, files: [] }
-        Loop Files, folderPath "\*.ahk", "R"
-            folderObj.files.Push({ name: A_LoopFileName, fullpath: A_LoopFileFullPath })
-        Loop Files, folderPath "\*.enc", "R"
-            folderObj.files.Push({ name: A_LoopFileName, fullpath: A_LoopFileFullPath })
+        for pattern in ["\*.ahk", "\*.enc"] {
+            Loop Files, folderPath pattern, "R" {
+                if PathHasIgnoredSegment(A_LoopFileFullPath, folderPath)
+                    continue
+                folderObj.files.Push({ name: A_LoopFileName, fullpath: A_LoopFileFullPath })
+            }
+        }
         HS_folders_ALL.Push(folderObj)
     }
 }

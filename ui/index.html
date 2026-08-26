@@ -239,6 +239,13 @@
         <ul id="folderList" class="folder-list" style="margin-top:10px"></ul>
         <button class="tb-btn" id="btnAddFolder" style="margin:12px 0 0" data-i18n="folders.add">＋ Lägg till mapp</button>
 
+        <div class="sp-section-title" style="margin-top:24px" data-i18n="folders.ignore.title">Undermappar att hoppa över</div>
+        <p class="sp-desc" data-i18n="folders.ignore.desc">Undermappar med dessa namn genomsöks inte. Arkiv- och backupmappar ligger ofta bredvid frasfilerna och innehåller gamla kopior av dem, som annars laddas som dubbletter. Separera med |.</p>
+        <div class="sp-row" style="margin-top:6px">
+          <input type="text" id="foldersIgnore" class="field-input sp-input" style="flex:1" spellcheck="false"
+                 placeholder="Backups|Backup|Archive|_archive|_gammalt">
+        </div>
+
         <div class="sp-section-title" style="margin-top:24px" data-i18n="packs.title">Ladda ner fraspaket</div>
         <p class="sp-desc" data-i18n="packs.desc">Färdiga fraspaket från ahk-phrases-repot. Valda paket laddas ner och läggs automatiskt till som frasmappar.</p>
         <div id="phrasePackIndex" class="wl-index-box"></div>

@@ -66,6 +66,8 @@ const LANG = {
     'wl.fetchErr': m => `Kunde inte hämta lista: ${m}`,
     'folders.desc': 'Alla .ahk- och .enc-filer i de valda mapparna laddas som frasfiler.',
     'folders.active': 'Aktiva frasmappar',
+    'folders.ignore.title': 'Undermappar att hoppa över',
+    'folders.ignore.desc': 'Undermappar med dessa namn genomsöks inte. Arkiv- och backupmappar ligger ofta bredvid frasfilerna och innehåller gamla kopior av dem, som annars laddas som dubbletter. Separera med |.',
     'folders.add': '＋ Lägg till mapp',
     'folders.delTip': 'Ta bort mapp',
     'folders.openExplorer': 'Öppna mappen i Utforskaren',
@@ -505,6 +507,8 @@ const LANG = {
     'wl.fetchErr': m => `Could not fetch list: ${m}`,
     'folders.desc': 'All .ahk and .enc files in the selected folders are loaded as phrase files.',
     'folders.active': 'Active phrase folders',
+    'folders.ignore.title': 'Subfolders to skip',
+    'folders.ignore.desc': 'Subfolders with these names are not scanned. Archive and backup folders sit next to the phrase files and hold old copies of them, which would otherwise load as duplicates. Separate with |.',
     'folders.add': '＋ Add folder',
     'folders.delTip': 'Remove folder',
     'folders.openExplorer': 'Open the folder in Explorer',
@@ -1539,6 +1543,9 @@ window.receiveFiles = function(files) {
 window.receiveSettings = function(data) {
   g_configuredFolders = data.folders || [];
   g_hiddenFolderIds   = new Set(data.hiddenFolders || []);
+  const ign = document.getElementById('foldersIgnore');
+  // Skip while focused — a reload mid-edit would overwrite what is being typed.
+  if (ign && document.activeElement !== ign) ign.value = data.ignoreFolders || '';
   renderFolderList(g_configuredFolders);
   populateSidebar();
   applyFilter();   // hidden folders reach us after initData — re-filter the list
@@ -2394,6 +2401,23 @@ function bindUI() {
     postToAhk({ action: 'addFolder' });
     tipWhenConfirmed();
   });
+
+  // Saving on blur rather than on every keystroke: each save rescans every
+  // phrase folder, which is far too costly to run per character.
+  const ignoreInput = document.getElementById('foldersIgnore');
+  if (ignoreInput) {
+    let lastSaved = null;
+    const saveIgnore = () => {
+      const v = ignoreInput.value.trim();
+      if (v === lastSaved) return;
+      lastSaved = v;
+      postToAhk({ action: 'saveIgnoreFolders', names: v });
+      tipSaved();
+    };
+    ignoreInput.addEventListener('focus', () => { lastSaved = ignoreInput.value.trim(); });
+    ignoreInput.addEventListener('blur', saveIgnore);
+    ignoreInput.addEventListener('keydown', e => { if (e.key === 'Enter') ignoreInput.blur(); });
+  }
 
   // Settings pages — General
   document.getElementById('btnSaveGeneral').addEventListener('click', () => { saveGeneralSettings(); tipSaved(); });
