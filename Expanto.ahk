@@ -32,6 +32,8 @@ global HS_ALL            := []
 global g_disabledFolders := []
 global g_hiddenFolders   := []   ; loaded but hidden from the file list
 global g_ignoreFolders   := []   ; subfolder names skipped when scanning a phrase folder
+global g_pendingRuns     := []   ; {run:...} commands awaiting execution after an insert
+global g_runApproved     := Map()  ; {run:...} commands confirmed by the user this session
 global g_wv2Shown        := true
 global g_prevWinId       := 0    ; hwnd of active window before Expanto was shown
 global g_hkOpenGui       := ""   ; currently registered OpenGui hotkey string
@@ -170,6 +172,8 @@ _AT(key) {
         "url.openFolder",  ["Öppna mapp",                   "Open folder"],
         "url.close",       ["Stäng",                        "Close"],
         "url.failed",      ["Kunde inte öppna:",            "Could not open:"],
+        "run.confirm",     ["Frasen vill köra det här kommandot:", "The phrase wants to run this command:"],
+        "run.fail",        ["Kunde inte köra:",             "Could not run:"],
     )
     if tbl.Has(key)
         return (g_uiLang = "en") ? tbl[key][2] : tbl[key][1]
@@ -3371,6 +3375,10 @@ HsFire(hs, *) {
             g_lastFired := { hs: hs, sent: g_lastSent, endChar: sentEc, caretBack: g_lastCaretBack, undoable: (g_lastSent != "") }
             RecordUsage(hs.id)
             SetTimer(ShowUndoPopup, -300)
+            if (res.ok)
+                SchedulePendingRuns(hs.filepath)   ; via timer — efter att typ-guarden släppt
+            else
+                ClearPendingRuns()                 ; avbruten fältdialog kör ingenting
         } else {
             noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
             out := noConform ? unesc : ConformCase(unesc, hs.short, ec)
@@ -3431,6 +3439,8 @@ _CollectManualDynFields(text) {
         if (InStr(name, "=") && !ParseChoiceField(name).choice)   ; skip resolved {key=value}; KEEP {name=[a/b]} and {name=a/b} choices
             continue
         if _IsKeyCmd(name)   ; {BS 3}, {Left 28}, {U+…} are keystrokes, not fields
+            continue
+        if (StrLower(SubStr(name, 1, 4)) = "run:")   ; {run:...} is a command, not a field
             continue
         seen[name] := true
         fields.Push(name)
@@ -3660,8 +3670,49 @@ SendExpanded(text) {
 ExpandAndSend(rawPhrase, filepath := "") {
     global g_dynMode
     res := ExpandDynamic(Unescape_CC(rawPhrase), filepath)
-    if (res.ok)
+    if (res.ok) {
         SendExpanded(res.text)
+        SchedulePendingRuns(filepath)
+    } else
+        ClearPendingRuns()
+}
+
+; ── {run:kommando} — fraser som startar program ───────────────────────────────
+ClearPendingRuns() {
+    global g_pendingRuns
+    g_pendingRuns := []
+}
+
+; Snapshot av kölistan + körning via engångstimer: timern får sin egen tråd
+; efter att insättningen (och typ-guarden) är helt klar, och en förhandsvisning
+; eller nästa expansion kan inte hinna skriva över det som ska köras.
+SchedulePendingRuns(filepath := "") {
+    global g_pendingRuns
+    if !g_pendingRuns.Length
+        return
+    runs := g_pendingRuns
+    g_pendingRuns := []
+    SetTimer(_RunFieldCmds.Bind(runs, filepath), -1)
+}
+
+; Fraser kan komma från nedladdade fraspaket, så ett kommando körs aldrig tyst
+; första gången: varje distinkt kommandorad bekräftas en gång per session.
+_RunFieldCmds(runs, filepath) {
+    global g_runApproved
+    for cmd in runs {
+        if !g_runApproved.Has(cmd) {
+            if (MsgBox(_AT("run.confirm") "`n`n" cmd
+                    . (filepath != "" ? "`n`n(" filepath ")" : "")
+                , "Expanto — {run}", "YesNo Icon?") != "Yes")
+                continue
+            g_runApproved[cmd] := true
+        }
+        try Run(cmd)
+        catch {
+            ToolTip(_AT("run.fail") "`n" cmd)
+            SetTimer(() => ToolTip(), -2500)
+        }
+    }
 }
 
 ; ── Coupled dynamic fields: config, title parsing, resolver, safety ───────────
@@ -3899,7 +3950,7 @@ CoupleIdentityGuard(filepath) {
 }
 
 ExpandDynamic(phrase, filepath := "", trigger := "", forceMode := "") {
-    global g_dynMode, g_dynAppModes, g_coupleLastTick
+    global g_dynMode, g_dynAppModes, g_coupleLastTick, g_pendingRuns
     phrase := StrReplace(phrase, "{date}", FormatTime(, "yyyy-MM-dd"))
     phrase := StrReplace(phrase, "{time}", FormatTime(, "HH:mm"))
     ; Only touch the clipboard when the phrase actually asks for it. Reading
@@ -3908,6 +3959,18 @@ ExpandDynamic(phrase, filepath := "", trigger := "", forceMode := "") {
     ; holds it open — paid on EVERY expansion before this check existed.
     if InStr(phrase, "{clipboard}")
         phrase := StrReplace(phrase, "{clipboard}", A_Clipboard)
+
+    ; ── {run:kommando}: körs efter insättningen, skrivs aldrig ut ─────────────
+    ; Extraheras EFTER {date}/{time}/{clipboard} ovan så de kan användas i
+    ; kommandoraden. Körs INTE här utan via SchedulePendingRuns hos anroparen:
+    ; dels ska ett avbrutet fältdialogsvar inte köra något, dels får ett
+    ; program som tar fokus inte sno åt sig den text som är på väg in.
+    g_pendingRuns := []
+    while RegExMatch(phrase, "i)\{run:([^}]*)\}", &mr) {
+        if (Trim(mr[1]) != "")
+            g_pendingRuns.Push(Trim(mr[1]))
+        phrase := SubStr(phrase, 1, mr.Pos - 1) SubStr(phrase, mr.Pos + mr.Len)
+    }
 
     reserved := Map("date", 1, "time", 1, "clipboard", 1, "cursor", 1)
     fields := [], seen := Map(), pos := 1
