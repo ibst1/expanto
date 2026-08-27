@@ -1183,65 +1183,10 @@ OnWebMessageReceived(sender, args) {
         _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(gen) ")")
 
     } else if (action = "bulkSave") {
-        ids  := msg["ids"]
-        upd  := msg["updates"]
-        setCat     := upd.Has("_setCat")     && upd["_setCat"]
-        setLang    := upd.Has("_setLang")    && upd["_setLang"]
-        setComment := upd.Has("_setComment") && upd["_setComment"]
-        setFile    := upd.Has("_setFile")    && upd["_setFile"]
-        newCatVal  := upd.Has("cat")     ? upd["cat"]     : ""
-        newLangVal := upd.Has("lang")    ? upd["lang"]    : ""
-        newCmtVal  := upd.Has("comment") ? upd["comment"] : ""
-        newFile    := upd.Has("file")    ? upd["file"]    : ""
-        tagAdd     := upd.Has("tagAdd")    ? upd["tagAdd"]    : []
-        tagRemove  := upd.Has("tagRemove") ? upd["tagRemove"] : []
-        changedFiles := Map()
-        for id in ids {
-            hs := FindHsById(id)
-            if !IsObject(hs)
-                continue
-            targetFile := (setFile && newFile != "" && newFile != hs.filepath) ? newFile : hs.filepath
-            ; Compute per-phrase tag string applying delta
-            curTags := []
-            for t in hs.tags
-                curTags.Push(t)
-            for t in tagAdd {
-                already := false
-                for c in curTags
-                    if (c = t) {
-                        already := true
-                        break
-                    }
-                if !already
-                    curTags.Push(t)
-            }
-            newTags := []
-            for t in curTags {
-                skip := false
-                for r in tagRemove
-                    if (r = t) {
-                        skip := true
-                        break
-                    }
-                if !skip
-                    newTags.Push(t)
-            }
-            SaveHotstring(targetFile, hs.short, hs.options, hs.long,
-                setCat     ? newCatVal  : hs.category,
-                setComment ? newCmtVal  : hs.comment,
-                ArrJoin(hs.aliases, ","), , ArrJoin(hs.apps, ","),
-                ArrJoin(newTags, ","),
-                setLang    ? newLangVal : hs.language,
-                , hs.disabled, , IsObject(hs.customFields) ? hs.customFields : Map(), hs.url, _HsAlts(hs), _HsAltNames(hs))
-            if (targetFile != hs.filepath) {
-                RemoveHotstringFromFile(hs.filepath, hs.short)
-                changedFiles[hs.filepath] := true
-            }
-            changedFiles[targetFile] := true
-        }
-        for fp, _ in changedFiles
-            RebuildAndReload(fp)
-        _SafeSend(sender,"window.initData(" BuildPhrasesJson() ")")
+        ; 883 markerade fraser x läs-och-skriv-hela-filen tog minuter och
+        ; frös UI:t (allt kördes synkront i meddelandehanteraren). Körs nu
+        ; uppskjutet, med filvis batchning och förlopp i statusfältet.
+        SetTimer(_BulkSaveRun.Bind(msg["ids"], msg["updates"]), -1)
 
     } else if (action = "checkTriggerInDict") {
         global g_dictPaths
@@ -2832,6 +2777,132 @@ BuildPhraseLineFromHs(hs, trigger, body, preEscaped := false) {
         , hs.category, hs.comment, hs.language, ArrJoin(hs.tags, ",")
         , hs.disabled, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ",")
         , hs.customFields, hs.url, _HsAlts(hs), _HsAltNames(hs), preEscaped)
+}
+
+; Bulk-ändring av många fraser: EN läsning och EN skrivning per berörd fil
+; i stället för en hel filomskrivning per fras (883 fraser i samma fil blev
+; 883 omskrivningar av filen). Fraser som byter fil tas via den gamla
+; per-fras-vägen (sällsynt). Förloppet skickas till statusfältet.
+_BulkSaveRun(ids, upd) {
+    global wv2Core
+    setCat     := upd.Has("_setCat")     && upd["_setCat"]
+    setLang    := upd.Has("_setLang")    && upd["_setLang"]
+    setComment := upd.Has("_setComment") && upd["_setComment"]
+    setFile    := upd.Has("_setFile")    && upd["_setFile"]
+    newCatVal  := upd.Has("cat")     ? upd["cat"]     : ""
+    newLangVal := upd.Has("lang")    ? upd["lang"]    : ""
+    newCmtVal  := upd.Has("comment") ? upd["comment"] : ""
+    newFile    := upd.Has("file")    ? upd["file"]    : ""
+    tagAdd     := upd.Has("tagAdd")    ? upd["tagAdd"]    : []
+    tagRemove  := upd.Has("tagRemove") ? upd["tagRemove"] : []
+
+    NewTagsFor(hs) {
+        curTags := []
+        for t in hs.tags
+            curTags.Push(t)
+        for t in tagAdd {
+            already := false
+            for c in curTags
+                if (c = t) {
+                    already := true
+                    break
+                }
+            if !already
+                curTags.Push(t)
+        }
+        newTags := []
+        for t in curTags {
+            skip := false
+            for r in tagRemove
+                if (r = t) {
+                    skip := true
+                    break
+                }
+            if !skip
+                newTags.Push(t)
+        }
+        return newTags
+    }
+
+    total := ids.Length, done := 0
+    changedFiles := Map()
+    perFile := Map()     ; filväg -> Map(trigger -> hs)
+    movers := []
+    for id in ids {
+        hs := FindHsById(id)
+        if !IsObject(hs)
+            continue
+        if (setFile && newFile != "" && newFile != hs.filepath) {
+            movers.Push(hs)
+            continue
+        }
+        if !perFile.Has(hs.filepath)
+            perFile[hs.filepath] := Map()
+        perFile[hs.filepath][hs.short] := hs
+    }
+
+    for fp, byShort in perFile {
+        text  := PhraseFileRead(fp, true)
+        lines := StrSplit(text, "`n")
+        out := [], i := 0
+        while (i < lines.Length) {
+            i++
+            line := lines[i]
+            trimmed := Trim(line)
+            if (RegExMatch(trimmed, "^:([^:]*):([^:]+)::(.*)", &m) && byShort.Has(m[2])) {
+                hs := byShort[m[2]]
+                byShort.Delete(m[2])   ; ersätt bara första förekomsten, som SaveHotstring
+                out.Push(BuildPhraseLine(hs.options, hs.short, hs.long
+                    , setCat ? newCatVal : hs.category
+                    , setComment ? newCmtVal : hs.comment
+                    , setLang ? newLangVal : hs.language
+                    , ArrJoin(NewTagsFor(hs), ",")
+                    , hs.disabled, ArrJoin(hs.aliases, ","), ArrJoin(hs.apps, ",")
+                    , IsObject(hs.customFields) ? hs.customFields : Map(), hs.url
+                    , _HsAlts(hs), _HsAltNames(hs)))
+                done++
+                ; hoppa över gammalt fortsättningsblock, precis som SaveHotstring
+                bodyPart := Trim(m[3])
+                if ((bodyPart = "" || SubStr(bodyPart, 1, 1) = ";") && i < lines.Length && Trim(lines[i + 1]) = "(") {
+                    i++
+                    while (i < lines.Length) {
+                        i++
+                        if SubStr(Trim(lines[i]), 1, 1) = ")"
+                            break
+                    }
+                }
+            } else {
+                out.Push(line)
+            }
+        }
+        joined := ""
+        for j, l in out
+            joined .= (j = 1 ? "" : "`n") l
+        PhraseFileWriteAll(fp, joined)
+        changedFiles[fp] := true
+        try wv2Core.ExecuteScriptAsync("window.setBulkStatus(" done "," total ")")
+    }
+
+    for hs in movers {
+        SaveHotstring(newFile, hs.short, hs.options, hs.long,
+            setCat     ? newCatVal  : hs.category,
+            setComment ? newCmtVal  : hs.comment,
+            ArrJoin(hs.aliases, ","), , ArrJoin(hs.apps, ","),
+            ArrJoin(NewTagsFor(hs), ","),
+            setLang    ? newLangVal : hs.language,
+            , hs.disabled, , IsObject(hs.customFields) ? hs.customFields : Map(), hs.url, _HsAlts(hs), _HsAltNames(hs))
+        RemoveHotstringFromFile(hs.filepath, hs.short)
+        changedFiles[hs.filepath] := true
+        changedFiles[newFile] := true
+        done++
+        if (Mod(done, 10) = 0)
+            try wv2Core.ExecuteScriptAsync("window.setBulkStatus(" done "," total ")")
+    }
+
+    for fp, _ in changedFiles
+        RebuildAndReload(fp)
+    try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0,0)")
+    try wv2Core.ExecuteScriptAsync("window.initData(" BuildPhrasesJson() ")")
 }
 
 SaveHotstring(filepath, short, options, phrase, category, comment,
