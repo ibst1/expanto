@@ -393,7 +393,7 @@ const LANG = {
     'status.aiBatch': (d, t) => `✨ AI-taggar ${d}/${t}…`,
     'status.aiBatchDone': 'AI-taggning klar',
     'status.bulk': (d, t) => `Uppdaterar ${d}/${t}…`,
-    'status.bulkDone': 'Ändringarna sparade',
+    'status.bulkDone': n => n ? `${n} fraser uppdaterade` : 'Ändringarna sparade',
     'recent.usedLabel': 'Senast använda', 'recent.editedLabel': 'Senast redigerade',
     'nav.maint': 'Underhåll', 'sp.maint.title': 'Underhåll',
     'maint.dupes.title': 'Dubblettdetektering',
@@ -848,7 +848,7 @@ const LANG = {
     'status.aiBatch': (d, t) => `✨ AI tagging ${d}/${t}…`,
     'status.aiBatchDone': 'AI tagging finished',
     'status.bulk': (d, t) => `Updating ${d}/${t}…`,
-    'status.bulkDone': 'Changes saved',
+    'status.bulkDone': n => n ? `${n} phrases updated` : 'Changes saved',
     'recent.usedLabel': 'Recently used', 'recent.editedLabel': 'Recently edited',
     'nav.maint': 'Maintenance', 'sp.maint.title': 'Maintenance',
     'maint.dupes.title': 'Duplicate detection',
@@ -2123,11 +2123,14 @@ window.updateAiUsage = function(text) {
 window.setBulkStatus = function(done, total) {
   const sa = document.getElementById('statusAi');
   if (!sa) return;
-  const running = done > 0 && total > 0;
+  const running = done > 0;
   const wasRunning = !sa.classList.contains('hidden');
   sa.classList.toggle('hidden', !running);
   sa.textContent = running ? T('status.bulk', done, total) : '';
-  if (!running && wasRunning) setStatus(T('status.bulkDone'));
+  // klart-signal: done=0 med total=N. Operationen är numera ofta klar under
+  // en sekund, så förloppet hinner bara blinka - slutbeskedet med antal är
+  // det användaren faktiskt ser.
+  if (!running && wasRunning) setStatus(T('status.bulkDone', total));
 };
 
 window.setAiBatchStatus = function(done, total) {

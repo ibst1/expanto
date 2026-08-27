@@ -2933,7 +2933,7 @@ _BulkSaveRun(ids, upd) {
     }
     try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  bulk klar: " done "/" total
         . " i " changedFiles.Count " fil(er)`r`n", A_ScriptDir "\bulk.log", "UTF-8")
-    try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0,0)")
+    try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0," total ")")
     try wv2Core.ExecuteScriptAsync("window.initData(" BuildPhrasesJson() ")")
 }
 
