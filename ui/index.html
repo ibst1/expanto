@@ -20,10 +20,10 @@
   <div class="sep"></div>
   <button class="tb-btn" id="btnAddNew" data-i18n="btn.new">＋ Ny fras</button>
   <div class="sep"></div>
-  <button class="tb-btn ghost" id="btnRecentToggle" data-i18n="recent.off">🕐 Senast</button>
+  <button class="tb-btn ghost" id="btnRecentToggle">🕐<span class="tb-label" id="lblRecent" data-i18n="recent.off">Senast</span></button>
   <!-- View options (list density, preview lines, sidebar) live behind one button -->
   <div class="view-menu-wrap">
-    <button class="tb-btn ghost icon-btn" id="btnViewMenu" title="Vyalternativ" data-i18n-title="tt.viewMenu">⋮</button>
+    <button class="tb-btn ghost" id="btnViewMenu" title="Vyalternativ" data-i18n-title="tt.viewMenu">⋮<span class="tb-label" data-i18n="tb.view">Visa</span></button>
     <div id="viewMenu" class="view-menu hidden">
       <label class="vm-row preview-slider-wrap" title="Textrader per fras i listan" data-i18n-title="toolbar.previewLines">
         <span data-i18n="view.previewLines">≣ Rader per fras</span>
@@ -35,9 +35,9 @@
   </div>
   <!-- Underhåll: commands, not view options and not settings — its own button
        between the two. Opens the right-hand maintenance panel. -->
-  <button class="tb-btn ghost icon-btn" id="btnTools" title="Underhållsverktyg" data-i18n-title="tt.tools">🛠</button>
-  <button class="tb-btn ghost" id="btnSettings" data-i18n="btn.settings" title="Inställningar" data-i18n-title="nav.settingsTip">⚙ Inställningar</button>
-  <button class="tb-btn ghost enc-lock-btn hidden" id="btnEncLock" title="Krypterade filer är låsta — klicka för att låsa upp">🔒 Låst</button>
+  <button class="tb-btn ghost" id="btnTools" title="Underhållsverktyg" data-i18n-title="tt.tools">🛠<span class="tb-label" data-i18n="tb.maint">Underhåll</span></button>
+  <button class="tb-btn ghost" id="btnSettings" title="Inställningar" data-i18n-title="nav.settingsTip">⚙<span class="tb-label" data-i18n="tb.settings">Inställningar</span></button>
+  <button class="tb-btn ghost enc-lock-btn hidden" id="btnEncLock" title="Krypterade filer är låsta — klicka för att låsa upp">🔒<span class="tb-label" data-i18n="tb.unlock">Lås upp</span></button>
 </div>
 
 <!-- ── Main area ─────────────────────────────────────────────────────────── -->
@@ -149,6 +149,12 @@
             <label class="gen-radio-opt">
               <input type="checkbox" id="genStartMinimized">
               <span data-i18n="gen.startMinimized">Starta minimerat till systemfältet</span>
+            </label>
+          </div>
+          <div class="sp-row" style="margin-top:6px">
+            <label class="gen-radio-opt">
+              <input type="checkbox" id="genToolbarIcons">
+              <span data-i18n="gen.toolbarIcons">Endast ikoner i verktygsraden</span>
             </label>
           </div>
 

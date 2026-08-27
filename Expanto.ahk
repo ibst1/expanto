@@ -1158,6 +1158,7 @@ OnWebMessageReceived(sender, args) {
         startMin  := IniRead(inifile, "General", "StartMinimized", "0") != "0"
         gen := _ReadPasteSettings()
         gen["editorCmd"] := editorCmd, gen["startMinimized"] := startMin, gen["autostart"] := _AutostartOn()
+        gen["toolbarIconsOnly"] := IniRead(inifile, "General", "ToolbarIconsOnly", "0") != "0"
         _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(gen) ")")
 
     } else if (action = "setLang") {
@@ -1169,13 +1170,16 @@ OnWebMessageReceived(sender, args) {
         global inifile
         editorCmd := msg.Has("editorCmd") ? msg["editorCmd"] : ""
         startMin  := msg.Has("startMinimized") && msg["startMinimized"] ? "1" : "0"
+        tbIcons   := msg.Has("toolbarIconsOnly") && msg["toolbarIconsOnly"] ? "1" : "0"
         IniWrite(editorCmd, inifile, "General", "EditorCmd")
         IniWrite(startMin,  inifile, "General", "StartMinimized")
+        IniWrite(tbIcons,   inifile, "General", "ToolbarIconsOnly")
         _AutostartSet(msg.Has("autostart") && msg["autostart"])
         _SavePasteSettings(msg)
         startMinBool := startMin = "1"
         gen := _ReadPasteSettings()
         gen["editorCmd"] := editorCmd, gen["startMinimized"] := startMinBool, gen["autostart"] := _AutostartOn()
+        gen["toolbarIconsOnly"] := tbIcons = "1"
         _SafeSend(sender,"window.receiveGeneralSettings(" JSON.Dump(gen) ")")
 
     } else if (action = "bulkSave") {

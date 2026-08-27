@@ -386,7 +386,10 @@ const LANG = {
     'dynApp.mode.dialog': 'Dialog', 'dynApp.mode.off': 'Av',
     'ai.batch.progress': (d,t) => `✨ AI-taggar ${d}/${t}…`, 'ai.batch.idle': '✨ AI-tagga synliga fraser',
     'dtm.dup': 'Duplicera till', 'dtm.move': 'Flytta till',
-    'recent.off': '🕐 Senast', 'recent.used': '🕐 Använda', 'recent.edited': '🕐 Redigerade',
+    'recent.off': 'Senast', 'recent.used': 'Använda', 'recent.edited': 'Redigerade',
+    'tb.view': 'Visa', 'tb.maint': 'Underhåll', 'tb.settings': 'Inställningar',
+    'tb.unlock': 'Lås upp',
+    'gen.toolbarIcons': 'Endast ikoner i verktygsraden',
     'recent.usedLabel': 'Senast använda', 'recent.editedLabel': 'Senast redigerade',
     'nav.maint': 'Underhåll', 'sp.maint.title': 'Underhåll',
     'maint.dupes.title': 'Dubblettdetektering',
@@ -834,7 +837,10 @@ const LANG = {
     'dynApp.mode.dialog': 'Dialog', 'dynApp.mode.off': 'Off',
     'ai.batch.progress': (d,t) => `✨ AI-tagging ${d}/${t}…`, 'ai.batch.idle': '✨ AI-tag visible phrases',
     'dtm.dup': 'Duplicate to', 'dtm.move': 'Move to',
-    'recent.off': '🕐 Recent', 'recent.used': '🕐 Used', 'recent.edited': '🕐 Edited',
+    'recent.off': 'Recent', 'recent.used': 'Used', 'recent.edited': 'Edited',
+    'tb.view': 'View', 'tb.maint': 'Maintenance', 'tb.settings': 'Settings',
+    'tb.unlock': 'Unlock',
+    'gen.toolbarIcons': 'Icons only in the toolbar',
     'recent.usedLabel': 'Recently used', 'recent.editedLabel': 'Recently edited',
     'nav.maint': 'Maintenance', 'sp.maint.title': 'Maintenance',
     'maint.dupes.title': 'Duplicate detection',
@@ -2206,7 +2212,7 @@ function bindUI() {
   document.getElementById('btnRecentToggle').addEventListener('click', () => {
     g_recentMode = g_recentMode === 'off' ? 'used' : g_recentMode === 'used' ? 'edited' : 'off';
     const btn = document.getElementById('btnRecentToggle');
-    btn.textContent = T('recent.' + g_recentMode);
+    document.getElementById('lblRecent').textContent = T('recent.' + g_recentMode);
     btn.classList.toggle('active', g_recentMode !== 'off');
     applyFilter();
   });
@@ -4234,7 +4240,9 @@ function clearAllFilters() {
   if (g_recentMode !== 'off') {
     g_recentMode = 'off';
     const rb = document.getElementById('btnRecentToggle');
-    if (rb) { rb.textContent = T('recent.off'); rb.classList.remove('active'); }
+    const rl = document.getElementById('lblRecent');
+    if (rl) rl.textContent = T('recent.off');
+    if (rb) rb.classList.remove('active');
   }
   if (g_aiSearchMode) {
     g_aiSearchMode = false;
@@ -4539,6 +4547,9 @@ window.receiveGeneralSettings = function(data) {
   if (chk) chk.checked = !!data.startMinimized;
   const auto = document.getElementById('genAutostart');
   if (auto) auto.checked = !!data.autostart;
+  const ti = document.getElementById('genToolbarIcons');
+  if (ti) ti.checked = !!data.toolbarIconsOnly;
+  document.body.classList.toggle('tb-icons-only', !!data.toolbarIconsOnly);
   const pm = document.getElementById('pasteMode');
   if (pm && data.pasteMode) pm.value = data.pasteMode;
   const pml = document.getElementById('pasteMinLen');
@@ -4552,6 +4563,7 @@ function saveGeneralSettings() {
     editorCmd:      document.getElementById('genEditorCmd').value.trim(),
     startMinimized: !!(document.getElementById('genStartMinimized')?.checked),
     autostart:      !!(document.getElementById('genAutostart')?.checked),
+    toolbarIconsOnly: !!(document.getElementById('genToolbarIcons')?.checked),
     // Insertion method lives here, not under Dynamic fields: it governs every
     // expansion, not only the ones with {fields}.
     pasteMode:      document.getElementById('pasteMode').value,
