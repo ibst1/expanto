@@ -2266,6 +2266,13 @@ function bindUI() {
     e.stopPropagation();
     const menu = document.getElementById('aiDropMenu');
     if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+    // "AI för markerade" är bara meningsfull med en multimarkering - visa
+    // antalet och gråa ut annars. ("AI-tagga alla synliga" bor i Underhåll:
+    // det är ett underhållskommando, inte en frashandling.)
+    const bulkItem = menu.querySelector('[data-aiaction="bulk"]');
+    const nSel = g_multiSel.size;
+    bulkItem.textContent = T('aidrop.bulk') + (nSel >= 2 ? ' (' + nSel + ')' : '');
+    bulkItem.classList.toggle('disabled', nSel < 2);
     const btn  = document.getElementById('btnAiDrop');
     const rect = btn.getBoundingClientRect();
     _positionDropdown(menu, rect);
@@ -2273,12 +2280,11 @@ function bindUI() {
   });
   document.getElementById('aiDropMenu').addEventListener('click', e => {
     const item = e.target.closest('[data-aiaction]');
-    if (!item) return;
+    if (!item || item.classList.contains('disabled')) return;
     document.getElementById('aiDropMenu').classList.add('hidden');
     const act = item.dataset.aiaction;
     if (act === 'single') aiSuggestForSelected();
     else if (act === 'bulk')  aiSuggestBulk();
-    else if (act === 'batch') aiBatchVisible();
   });
   document.getElementById('btnBulkAi').addEventListener('click', aiSuggestBulk);
   // The menu inserts into the phrase box that last had focus — the main one
