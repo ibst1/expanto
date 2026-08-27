@@ -1277,6 +1277,8 @@ textarea.field-input { min-height: 80px; }
   color: var(--text);
 }
 .ctx-item:hover { background: var(--bg-hover); }
+.ctx-item.disabled { opacity: .45; cursor: default; }
+.ctx-item.disabled:hover { background: none; }
 .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
 .fins-hdr {
   padding: 5px 14px 2px;
