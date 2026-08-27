@@ -1746,6 +1746,7 @@ textarea.field-input { min-height: 80px; }
 /* ── Icon-only toolbar buttons ── */
 .tb-btn.icon-btn { padding: 4px 7px; font-size: 14px; line-height: 1; }
 #toolbar .tb-label { margin-left: 5px; }
+#statusAi { margin-left: 10px; color: var(--accent2); white-space: nowrap; }
 body.tb-icons-only #toolbar .tb-label { display: none; }
 
 /* ── Compact phrase list mode ── */
