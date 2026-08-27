@@ -523,71 +523,6 @@
 
       <!-- ── AI-underhåll ── -->
       <!-- ── Underhåll ── -->
-      <div id="spMaint" class="settings-page hidden">
-        <h2 class="page-title" data-i18n="sp.maint.title">Underhåll</h2>
-        <div class="sp-form">
-
-          <!-- AI-funktioner -->
-          <h3 class="maint-section-title" data-i18n="maint.ai.title">AI-funktioner</h3>
-          <p class="sp-desc" data-i18n="maint.ai.desc">Kräver att AI (Claude) är aktiverat under Inställningar → AI (Claude).</p>
-
-          <div class="maint-ai-card">
-            <div class="maint-ai-card-body">
-              <b data-i18n="maint.ai.batchAll.label">✨ AI-tagga synliga fraser</b>
-              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.batchAll.desc">Skickar alla synliga fraser till AI som automatiskt föreslår taggar och kategorier. Kräver ett API-anrop per fras.</p>
-              <button class="tb-btn ghost" id="btnAiBatchAll" style="width:100%">✨ AI-tagga synliga fraser</button>
-            </div>
-          </div>
-
-          <div class="maint-ai-card">
-            <div class="maint-ai-card-body">
-              <b data-i18n="maint.ai.tags.label">🏷 Städa taggar</b>
-              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.tags.desc">AI granskar alla befintliga taggar och föreslår sammanslagningar av synonymer samt borttagning av meningslösa taggar.</p>
-              <button class="tb-btn ghost ai-maint-btn" data-task="tags" style="width:100%" data-i18n="maint.ai.tags.btn">Städa taggar…</button>
-            </div>
-          </div>
-
-          <div class="maint-ai-card">
-            <div class="maint-ai-card-body">
-              <b data-i18n="maint.ai.cats.label">📁 Städa kategorier</b>
-              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.cats.desc">AI granskar kategorier och föreslår sammanslagningar eller omstrukturering för ett enhetligare system.</p>
-              <button class="tb-btn ghost ai-maint-btn" data-task="cats" style="width:100%" data-i18n="maint.ai.cats.btn">Städa kategorier…</button>
-            </div>
-          </div>
-
-          <div class="maint-ai-card">
-            <div class="maint-ai-card-body">
-              <b data-i18n="maint.ai.move.label">📦 Placera om fraser</b>
-              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.move.desc">AI föreslår vilka fraser som bör flyttas till en annan fil baserat på innehåll och befintlig filstruktur.</p>
-              <button class="tb-btn ghost ai-maint-btn" data-task="move" style="width:100%" data-i18n="maint.ai.move.btn">Placera om fraser…</button>
-            </div>
-          </div>
-
-          <button class="tb-btn ghost" id="btnMaintUndo" style="margin-top:4px;width:100%" data-i18n="maint.ai.undo">↺ Ångra senaste AI-städning</button>
-
-          <!-- Dubbletter -->
-          <h3 class="maint-section-title" style="margin-top:20px" data-i18n="maint.dupes.title">Dubblettdetektering</h3>
-          <p class="sp-desc" data-i18n="maint.dupes.desc">Söker igenom hela biblioteket efter fraser med exakt samma trigger eller identiskt innehåll. Ingen AI krävs.</p>
-          <button class="tb-btn ghost" id="btnRunDupeCheck" style="width:100%" data-i18n="maint.dupes.btn">🔍 Kör dubblettdetektering</button>
-          <div id="maintDupesResult" class="maint-result hidden"></div>
-
-          <h3 class="maint-section-title" data-i18n="maint.semdupes.title">Semantiska dubbletter (AI)</h3>
-          <p class="sp-desc" data-i18n="maint.semdupes.desc">AI analyserar fraser och hittar sådana som betyder liknande saker men har olika formuleringar — t.ex. synonyma fraser som bör slås ihop.</p>
-          <button class="tb-btn ghost" id="btnRunSemDupes" style="width:100%" data-i18n="maint.semdupes.btn">✨ Kör AI-analys av semantiska dubbletter</button>
-
-          <!-- Statistik -->
-          <h3 class="maint-section-title" data-i18n="maint.stats.title">Statistik &amp; döda fraser</h3>
-          <p class="sp-desc" data-i18n="maint.stats.desc">Visar användningsstatistik baserat på lokalt sparade tider. Hjälper dig hitta fraser som aldrig används eller inte använts på länge.</p>
-          <button class="tb-btn ghost" id="btnRunStats" style="width:100%" data-i18n="maint.stats.btn">📊 Visa statistik</button>
-          <div id="maintStatsResult" class="maint-result hidden"></div>
-
-        </div>
-      </div>
-
-      <!-- ── Stavningskontroll ── -->
-      <!-- Deliberately built as a mirror of Frasmappar above: same section order
-           (own folders first, downloads second), same .sp-dl-row for the download
-           destination, one Spara at the bottom. -->
       <div id="spSpell" class="settings-page hidden">
         <h2 class="page-title" data-i18n="sp.spell.title">Stavningskontroll</h2>
 
@@ -887,6 +822,82 @@
     <div class="side-panel-actions">
       <button class="action-btn save" id="btnSaveFileSettings" data-i18n="btn.saveOnly">Spara</button>
       <button class="action-btn cancel" id="btnCancelFileSettings" data-i18n="btn.cancel">Avbryt</button>
+    </div>
+  </aside>
+
+  <!-- Underhåll (right panel): the tools act on the VISIBLE phrases -
+       "AI-tagga synliga fraser" is meaningless unless the list stays visible,
+       so this lives beside it instead of inside full-screen settings. -->
+  <aside id="maintPanel" class="hidden">
+    <div class="side-panel-header">
+      <h2 data-i18n="sp.maint.title">Underhåll</h2>
+      <button id="closeMaintPanel" title="Stäng" data-i18n-title="btn.close">✕</button>
+    </div>
+    <div class="side-panel-body">
+
+        <div class="sp-form">
+
+          <!-- AI-funktioner -->
+          <h3 class="maint-section-title" data-i18n="maint.ai.title">AI-funktioner</h3>
+          <p class="sp-desc" data-i18n="maint.ai.desc">Kräver att AI (Claude) är aktiverat under Inställningar → AI (Claude).</p>
+
+          <div class="maint-ai-card">
+            <div class="maint-ai-card-body">
+              <b data-i18n="maint.ai.batchAll.label">✨ AI-tagga synliga fraser</b>
+              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.batchAll.desc">Skickar alla synliga fraser till AI som automatiskt föreslår taggar och kategorier. Kräver ett API-anrop per fras.</p>
+              <button class="tb-btn ghost" id="btnAiBatchAll" style="width:100%">✨ AI-tagga synliga fraser</button>
+            </div>
+          </div>
+
+          <div class="maint-ai-card">
+            <div class="maint-ai-card-body">
+              <b data-i18n="maint.ai.tags.label">🏷 Städa taggar</b>
+              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.tags.desc">AI granskar alla befintliga taggar och föreslår sammanslagningar av synonymer samt borttagning av meningslösa taggar.</p>
+              <button class="tb-btn ghost ai-maint-btn" data-task="tags" style="width:100%" data-i18n="maint.ai.tags.btn">Städa taggar…</button>
+            </div>
+          </div>
+
+          <div class="maint-ai-card">
+            <div class="maint-ai-card-body">
+              <b data-i18n="maint.ai.cats.label">📁 Städa kategorier</b>
+              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.cats.desc">AI granskar kategorier och föreslår sammanslagningar eller omstrukturering för ett enhetligare system.</p>
+              <button class="tb-btn ghost ai-maint-btn" data-task="cats" style="width:100%" data-i18n="maint.ai.cats.btn">Städa kategorier…</button>
+            </div>
+          </div>
+
+          <div class="maint-ai-card">
+            <div class="maint-ai-card-body">
+              <b data-i18n="maint.ai.move.label">📦 Placera om fraser</b>
+              <p class="sp-desc" style="margin:2px 0 6px" data-i18n="maint.ai.move.desc">AI föreslår vilka fraser som bör flyttas till en annan fil baserat på innehåll och befintlig filstruktur.</p>
+              <button class="tb-btn ghost ai-maint-btn" data-task="move" style="width:100%" data-i18n="maint.ai.move.btn">Placera om fraser…</button>
+            </div>
+          </div>
+
+          <button class="tb-btn ghost" id="btnMaintUndo" style="margin-top:4px;width:100%" data-i18n="maint.ai.undo">↺ Ångra senaste AI-städning</button>
+
+          <!-- Dubbletter -->
+          <h3 class="maint-section-title" style="margin-top:20px" data-i18n="maint.dupes.title">Dubblettdetektering</h3>
+          <p class="sp-desc" data-i18n="maint.dupes.desc">Söker igenom hela biblioteket efter fraser med exakt samma trigger eller identiskt innehåll. Ingen AI krävs.</p>
+          <button class="tb-btn ghost" id="btnRunDupeCheck" style="width:100%" data-i18n="maint.dupes.btn">🔍 Kör dubblettdetektering</button>
+          <div id="maintDupesResult" class="maint-result hidden"></div>
+
+          <h3 class="maint-section-title" data-i18n="maint.semdupes.title">Semantiska dubbletter (AI)</h3>
+          <p class="sp-desc" data-i18n="maint.semdupes.desc">AI analyserar fraser och hittar sådana som betyder liknande saker men har olika formuleringar — t.ex. synonyma fraser som bör slås ihop.</p>
+          <button class="tb-btn ghost" id="btnRunSemDupes" style="width:100%" data-i18n="maint.semdupes.btn">✨ Kör AI-analys av semantiska dubbletter</button>
+
+          <!-- Statistik -->
+          <h3 class="maint-section-title" data-i18n="maint.stats.title">Statistik &amp; döda fraser</h3>
+          <p class="sp-desc" data-i18n="maint.stats.desc">Visar användningsstatistik baserat på lokalt sparade tider. Hjälper dig hitta fraser som aldrig används eller inte använts på länge.</p>
+          <button class="tb-btn ghost" id="btnRunStats" style="width:100%" data-i18n="maint.stats.btn">📊 Visa statistik</button>
+          <div id="maintStatsResult" class="maint-result hidden"></div>
+
+        </div>
+      
+
+      <!-- ── Stavningskontroll ── -->
+      <!-- Deliberately built as a mirror of Frasmappar above: same section order
+           (own folders first, downloads second), same .sp-dl-row for the download
+           destination, one Spara at the bottom. -->
     </div>
   </aside>
 

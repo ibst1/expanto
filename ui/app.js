@@ -2353,6 +2353,10 @@ function bindUI() {
     openFileSettings(path);
   });
   document.getElementById('closeFileSettings').addEventListener('click', closeFileSettings);
+  document.getElementById('closeMaintPanel').addEventListener('click', () => {
+    document.getElementById('maintPanel').classList.add('hidden');
+    document.getElementById('detailPanel').classList.remove('hidden');
+  });
   document.getElementById('btnCancelFileSettings').addEventListener('click', closeFileSettings);
   document.getElementById('btnSaveFileSettings').addEventListener('click', saveFileSettingsNow);
   document.getElementById('fsFilePicker').addEventListener('change', e => {
@@ -2799,7 +2803,9 @@ function _bindPanelResize(handleId, panelId, storageKey, minW, maxW, rightPanel)
     ? document.getElementById(panelId)
     : (document.getElementById('detailPanel').classList.contains('hidden')
         ? (document.getElementById('bulkPanel').classList.contains('hidden')
-            ? document.getElementById('fileSettingsPanel')
+            ? (document.getElementById('fileSettingsPanel').classList.contains('hidden')
+                ? document.getElementById('maintPanel')
+                : document.getElementById('fileSettingsPanel'))
             : document.getElementById('bulkPanel'))
         : document.getElementById('detailPanel'));
   // Restore saved width
@@ -2807,7 +2813,7 @@ function _bindPanelResize(handleId, panelId, storageKey, minW, maxW, rightPanel)
   if (saved) {
     const w = saved + 'px';
     if (rightPanel) {
-      ['detailPanel','bulkPanel','fileSettingsPanel'].forEach(id => {
+      ['detailPanel','bulkPanel','fileSettingsPanel','maintPanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.width = w;
       });
@@ -2826,7 +2832,7 @@ function _bindPanelResize(handleId, panelId, storageKey, minW, maxW, rightPanel)
     const applyW = newW => {
       if (rightPanel) {
         // Keep all right panels in sync
-        ['detailPanel','bulkPanel','fileSettingsPanel'].forEach(id => {
+        ['detailPanel','bulkPanel','fileSettingsPanel','maintPanel'].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.style.width = newW + 'px';
         });
@@ -2855,10 +2861,13 @@ function _bindPanelResize(handleId, panelId, storageKey, minW, maxW, rightPanel)
 // commands you run, not settings you save. It borrows the settings shell (and its
 // ← Tillbaka), but without the category list, so it reads as its own view.
 function openTools() {
-  const prev = g_settingsPage;
-  enterSettings('maint');
-  g_settingsPage = (prev === 'maint') ? 'general' : prev;   // ⚙ still returns to real settings
-  document.querySelector('#settingsNav .settings-cat-list')?.classList.add('hidden');
+  // The tools act on the VISIBLE phrases (e.g. "AI-tagga synliga fraser"),
+  // so they open in the right panel with the list still in view - not in
+  // full-screen settings mode.
+  if (g_settingsMode) leaveSettings();
+  document.getElementById('detailPanel').classList.add('hidden');
+  document.getElementById('fileSettingsPanel').classList.add('hidden');
+  document.getElementById('maintPanel').classList.remove('hidden');
 }
 
 function enterSettings(page) {
@@ -3999,6 +4008,7 @@ function selectPhrase(id) {
   const p = g_phrases.find(x => x.id === id);
   if (!p) return;
   const opts = p.options || '';
+  document.getElementById('maintPanel').classList.add('hidden');
   document.getElementById('detailPanel').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = p.trigger;
   // The file is one of the always-visible fields; picking another one moves
@@ -4334,6 +4344,7 @@ function openNewPhrase() {
   _flushAutosave();
   if (g_settingsMode) leaveSettings();
   document.getElementById('fileSettingsPanel').classList.add('hidden');
+  document.getElementById('maintPanel').classList.add('hidden');
   g_newPhraseMode = true;
   g_selId = null;
   document.querySelectorAll('.phrase-row').forEach(r => r.classList.remove('selected'));
@@ -4768,6 +4779,7 @@ function openFileSettings(path) {
   g_fileSettingsFile = sel.value;
   document.getElementById('fsTitle').textContent = T('fs.title');
   document.getElementById('detailPanel').classList.add('hidden');
+  document.getElementById('maintPanel').classList.add('hidden');
   document.getElementById('fileSettingsPanel').classList.remove('hidden');
   fetchAndShowFileSettings(g_fileSettingsFile);
 }
