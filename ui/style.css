@@ -508,7 +508,8 @@ button.vm-row.active { color: var(--accent2); }
 
 /* ── Right-side panels (detail + file settings share layout) ── */
 #detailPanel,
-#fileSettingsPanel {
+#maintPanel { overflow-y: auto; }
+#fileSettingsPanel, #maintPanel {
   width: 380px;
   min-width: 260px;
   background: var(--bg2);
@@ -519,7 +520,7 @@ button.vm-row.active { color: var(--accent2); }
   flex-shrink: 0;
 }
 #detailPanel.hidden,
-#fileSettingsPanel.hidden { display: none; }
+#fileSettingsPanel.hidden, #maintPanel.hidden { display: none; }
 
 .side-panel-header {
   display: flex;
