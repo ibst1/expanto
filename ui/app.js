@@ -240,6 +240,7 @@ const LANG = {
     'field.apps.html': '<span data-ak-text>Appar</span> <span style="font-weight:400;text-transform:none">(komma-sep; process utan .exe eller title:del­av­titel; tomt = alla)</span>',
     'field.phrase': 'Fras', 'field.cat': 'Kategori',
     'field.insert.tip': 'Infoga dynamiskt fält',
+    'ai.encBlocked': 'Krypterade filer är exkluderade från AI.',
     'fins.date': 'Dagens datum — {datum}', 'fins.dateShort': 'Datum kort — {datum:yyMMdd}',
     'fins.tomorrow': 'Imorgon — {datum+1}', 'fins.time': 'Klockslag — {tid}',
     'fins.week': 'Veckonummer — {vecka}', 'fins.clip': 'Urklipp — {clipboard}',
@@ -687,6 +688,7 @@ const LANG = {
     'field.apps.html': '<span data-ak-text>Apps</span> <span style="font-weight:400;text-transform:none">(comma-sep; process without .exe or title:parttitle; empty = all)</span>',
     'field.phrase': 'Phrase', 'field.cat': 'Category',
     'field.insert.tip': 'Insert a dynamic field',
+    'ai.encBlocked': 'Encrypted files are excluded from AI.',
     'fins.date': "Today's date — {datum}", 'fins.dateShort': 'Short date — {datum:yyMMdd}',
     'fins.tomorrow': 'Tomorrow — {datum+1}', 'fins.time': 'Time of day — {tid}',
     'fins.week': 'Week number — {vecka}', 'fins.clip': 'Clipboard — {clipboard}',
@@ -4492,10 +4494,15 @@ function _aiLiveFire() {
   postToAhk({ action: 'aiSuggest', id: '', trigger, phrase, file, live: 1, seq: _aiLiveSeq });
 }
 
+function isEncFile(f) {
+  return typeof f === 'string' && f.toLowerCase().endsWith('.enc');
+}
+
 function aiSuggestForSelected() {
   if (!g_selId) return;
   const p = g_phrases.find(x => x.id === g_selId);
   if (!p) return;
+  if (isEncFile(p.file)) { alert(T('ai.encBlocked')); return; }
   const btn = document.getElementById('btnAiSuggest');
   btn.disabled = true;
   btn.textContent = '✨…';
@@ -5845,8 +5852,14 @@ function saveBulkEdit() {
 function aiSuggestBulk() {
   if (!g_aiEnabled) { alert(T('confirm.aiEnableFirst')); return; }
   if (!g_multiSel.size) return;
-  if (!confirm(T('confirm.aiBulk', g_multiSel.size))) return;
-  postToAhk({ action: 'aiBatch', ids: [...g_multiSel] });
+  // enc-fraser är immuna mot AI - skicka aldrig ens deras id:n
+  const ids = [...g_multiSel].filter(id => {
+    const p = g_phrases.find(x => x.id === id);
+    return p && !isEncFile(p.file);
+  });
+  if (!ids.length) { alert(T('ai.encBlocked')); return; }
+  if (!confirm(T('confirm.aiBulk', ids.length))) return;
+  postToAhk({ action: 'aiBatch', ids });
 }
 
 // ── New-file dialog ───────────────────────────────────────────────────────────

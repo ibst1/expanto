@@ -380,6 +380,15 @@ _AIDoSuggest(p) {
         wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", "AI inte aktiverat. Konfigurera nyckel under ⚙.", "live", p.live)) ")")
         return
     }
+    ; filen kan saknas i meddelandet (t.ex. live-förslag) - lös den via id:t,
+    ; annars kan exkluderingsspärren (inkl. .enc-filer) kringgås av misstag
+    if (p.file = "" && p.id != "") {
+        try {
+            hs := FindHsById(p.id)
+            if hs
+                p.file := hs.filepath
+        }
+    }
     if (p.file != "" && AIExcluded(p.file)) {
         wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", "Filen är exkluderad från AI.", "live", p.live)) ")")
         return
