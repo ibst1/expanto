@@ -2825,6 +2825,11 @@ _BulkSaveRun(ids, upd) {
     }
 
     total := ids.Length, done := 0
+    ; Statussignal OMEDELBART - både förlopps-UX och diagnostik: syns inte
+    ; "Uppdaterar 0/N" i statusfältet kom jobbet aldrig ens hit.
+    try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0.1," total ")")
+    try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  bulk start: " total " fraser`r`n"
+        , A_ScriptDir "\bulk.log", "UTF-8")
     changedFiles := Map()
     perFile := Map()     ; filväg -> Map(trigger -> hs)
     movers := []
@@ -2899,8 +2904,21 @@ _BulkSaveRun(ids, upd) {
             try wv2Core.ExecuteScriptAsync("window.setBulkStatus(" done "," total ")")
     }
 
-    for fp, _ in changedFiles
-        RebuildAndReload(fp)
+    ; RebuildAndReload kör init_hotstrings() - omregistrering av SAMTLIGA
+    ; hotstrings - per anrop. Med 15 ändrade filer blev det 15 fulla
+    ; omregistreringar: en lång, tyst svans efter själva filskrivningarna.
+    ; Gör det filvisa (inaktivera + parsa om filen) per fil, men registrera
+    ; om hotstrings EN gång.
+    global HS_ALL
+    for fp, _ in changedFiles {
+        for hs in HS_ALL
+            if (hs.filepath = fp)
+                try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
+        RebuildFileSimple(fp)
+    }
+    init_hotstrings()
+    try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  bulk klar: " done "/" total
+        . " i " changedFiles.Count " fil(er)`r`n", A_ScriptDir "\bulk.log", "UTF-8")
     try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0,0)")
     try wv2Core.ExecuteScriptAsync("window.initData(" BuildPhrasesJson() ")")
 }
