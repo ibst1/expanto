@@ -4535,7 +4535,11 @@ CreateHintPopup() {
 }
 
 HintActiveOK() {
+    ; Uppstarten tar >10 s med tusentals fraser och hint-maskineriet är
+    ; aktivt långt före fönsterskapandet - error.log 10:50 fångade racen.
     global wv2Win
+    if !IsSet(wv2Win)
+        return true
     return !WinActive("ahk_id " wv2Win.hwnd)
 }
 
