@@ -31,11 +31,11 @@
       </label>
       <button class="vm-row" id="btnCompact" title="Kompakt läge" data-i18n-title="tt.compact"><span data-i18n="view.compact">≡ Kompakt läge</span></button>
       <button class="vm-row" id="btnToggleSidebar" title="Dölj sidopanel" data-i18n-title="tt.toggleSidebar"><span class="vm-arrow">◀</span> <span data-i18n="view.sidebar">Sidopanel</span></button>
-      <!-- Underhåll is a set of one-off commands, not settings — so it lives here
-           rather than under Inställningar, which is for things you set and save. -->
-      <button class="vm-row" id="btnTools" title="Underhållsverktyg" data-i18n-title="tt.tools"><span data-i18n="view.tools">🛠 Verktyg</span></button>
     </div>
   </div>
+  <!-- Underhåll: commands, not view options and not settings — its own button
+       between the two. Opens the right-hand maintenance panel. -->
+  <button class="tb-btn ghost icon-btn" id="btnTools" title="Underhållsverktyg" data-i18n-title="tt.tools">🛠</button>
   <button class="tb-btn ghost" id="btnSettings" data-i18n="btn.settings" title="Inställningar" data-i18n-title="nav.settingsTip">⚙ Inställningar</button>
   <button class="tb-btn ghost enc-lock-btn hidden" id="btnEncLock" title="Krypterade filer är låsta — klicka för att låsa upp">🔒 Låst</button>
 </div>
