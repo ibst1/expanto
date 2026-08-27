@@ -12,6 +12,17 @@
 ; ändra, och fönster ärver trådens kontext när de skapas. AHK kör allt på
 ; en enda OS-tråd, så ett anrop här täcker alla fönster skriptet skapar.
 DllCall("SetThreadDpiAwarenessContext", "ptr", -4)
+
+; Krascher ska lämna spår: utan OnError dör skriptet med en dialog och noll
+; forensik. Loggar till error.log bredvid skriptet och låter tråden avslutas
+; (returnerar 1 = ingen dialog) - resten av appen lever vidare.
+OnError(_LogError)
+_LogError(e, mode) {
+    try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  " e.Message
+        . " (" e.File ":" e.Line ")" (e.Extra != "" ? "  [" e.Extra "]" : "") "`r`n"
+        , A_ScriptDir "\error.log", "UTF-8")
+    return 1
+}
 OnMessage(0x02E0, _WmDpiChanged)
 _WmDpiChanged(wParam, lParam, msg, hwnd) {
     global wv2Ctrl
