@@ -2247,7 +2247,7 @@ RebuildAndReload(filepath) {
         if (hs.filepath = filepath)
             try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
     RebuildFileSimple(filepath)
-    init_hotstrings()
+    init_hotstrings_file(filepath)
 }
 
 ; Fast single-file rebuild: disables/re-registers only that file's hotstrings (not all)
@@ -2915,8 +2915,8 @@ _BulkSaveRun(ids, upd) {
             if (hs.filepath = fp)
                 try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
         RebuildFileSimple(fp)
+        init_hotstrings_file(fp)
     }
-    init_hotstrings()
     try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  bulk klar: " done "/" total
         . " i " changedFiles.Count " fil(er)`r`n", A_ScriptDir "\bulk.log", "UTF-8")
     try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0,0)")
@@ -3129,6 +3129,24 @@ init_hotstrings() {
     global HS_ALL
     for hs in HS_ALL {
         if hs.disabled
+            continue
+        en := FileHsEnabled(hs.filepath) ? 1 : 0
+        try {
+            Hotstring(":" hs.options ":" hs.short, HsAction(hs), en)
+            for alias in hs.aliases
+                Hotstring(":" hs.options ":" alias, HsAction(hs), en)
+        }
+    }
+}
+
+; Registrera om enbart EN fils fraser. init_hotstrings över alla ~4000 är
+; O(n²) i AHK:s interna uppslag och tog sekunder - och den kördes vid VARJE
+; sparning (RebuildAndReload har 15 anropsplatser). Det var "det tar extremt
+; lång tid" när taggar klickades bort fras för fras i detaljpanelen.
+init_hotstrings_file(filepath) {
+    global HS_ALL
+    for hs in HS_ALL {
+        if (hs.filepath != filepath || hs.disabled)
             continue
         en := FileHsEnabled(hs.filepath) ? 1 : 0
         try {
