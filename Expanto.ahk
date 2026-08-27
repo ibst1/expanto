@@ -467,10 +467,20 @@ OnWebMessageReceived(sender, args) {
     if (!g_wv2Ready)
         return
     raw := args.WebMessageAsJson
+    t0 := A_TickCount
     try
         msg := JSON.Load(raw)
-    catch
+    catch {
+        ; stora meddelanden far inte forsvinna sparlost - bulkflodet gjorde det
+        if (StrLen(raw) > 20000)
+            try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  JSON.Load KRASCHADE for "
+                . StrLen(raw) " tecken`r`n", A_ScriptDir "\bulk.log", "UTF-8")
         return
+    }
+    if (StrLen(raw) > 20000)
+        try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  meddelande " StrLen(raw)
+            . " tecken, parse " (A_TickCount - t0) " ms, action " msg.Get("action", "?") "`r`n"
+            , A_ScriptDir "\bulk.log", "UTF-8")
 
     if !msg.Has("action")
         return
@@ -1186,7 +1196,8 @@ OnWebMessageReceived(sender, args) {
         ; 883 markerade fraser x läs-och-skriv-hela-filen tog minuter och
         ; frös UI:t (allt kördes synkront i meddelandehanteraren). Körs nu
         ; uppskjutet, med filvis batchning och förlopp i statusfältet.
-        SetTimer(_BulkSaveRun.Bind(msg["ids"], msg["updates"]), -1)
+        ids := msg.Has("idsPacked") ? StrSplit(msg["idsPacked"], Chr(1)) : msg["ids"]
+        SetTimer(_BulkSaveRun.Bind(ids, msg["updates"]), -1)
 
     } else if (action = "checkTriggerInDict") {
         global g_dictPaths
@@ -2825,6 +2836,12 @@ _BulkSaveRun(ids, upd) {
     }
 
     total := ids.Length, done := 0
+    ; id -> fras EN gang: FindHsById ar linjar, och 4094 anrop over 4094
+    ; fraser ar 16 miljoner strangjamforelser
+    global HS_ALL
+    byId := Map()
+    for hs in HS_ALL
+        byId[hs.id] := hs
     ; Statussignal OMEDELBART - både förlopps-UX och diagnostik: syns inte
     ; "Uppdaterar 0/N" i statusfältet kom jobbet aldrig ens hit.
     try wv2Core.ExecuteScriptAsync("window.setBulkStatus(0.1," total ")")
@@ -2834,7 +2851,7 @@ _BulkSaveRun(ids, upd) {
     perFile := Map()     ; filväg -> Map(trigger -> hs)
     movers := []
     for id in ids {
-        hs := FindHsById(id)
+        hs := byId.Get(id, "")
         if !IsObject(hs)
             continue
         if (setFile && newFile != "" && newFile != hs.filepath) {
@@ -2905,11 +2922,8 @@ _BulkSaveRun(ids, upd) {
     }
 
     ; RebuildAndReload kör init_hotstrings() - omregistrering av SAMTLIGA
-    ; hotstrings - per anrop. Med 15 ändrade filer blev det 15 fulla
-    ; omregistreringar: en lång, tyst svans efter själva filskrivningarna.
-    ; Gör det filvisa (inaktivera + parsa om filen) per fil, men registrera
-    ; om hotstrings EN gång.
-    global HS_ALL
+    ; hotstrings - per anrop. Filvis inaktivering + omparsning + filskopad
+    ; omregistrering i stället.
     for fp, _ in changedFiles {
         for hs in HS_ALL
             if (hs.filepath = fp)

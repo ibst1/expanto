@@ -5904,7 +5904,9 @@ function saveBulkEdit() {
     alert(T('bulk.noField'));
     return;
   }
-  postToAhk({ action: 'bulkSave', ids: [...g_multiSel], updates });
+  // 4094 id-strangar som JSON-array tog ~9 s att parsa AHK-sidigt (fryst UI);
+  // som EN packad strang ar det millisekunder (StrSplit ar C-implementerad)
+  postToAhk({ action: 'bulkSave', idsPacked: [...g_multiSel].join('\u0001'), updates });
   closeBulkPanel();
 }
 

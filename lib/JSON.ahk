@@ -146,13 +146,25 @@ class JSON {
     }
 
     static _Str() {
+        ; Chunk-scan i stallet for tecken-for-tecken: ett bulkmeddelande med
+        ; 4094 fras-id:n ar ~450 KB, och per-tecken-SubStr + konkat gjorde
+        ; parsningen till tiotals sekunder i WebView2-callbacken (fryst UI).
+        ; Hoppa direkt till nasta '"' eller '\' och ta hela loppet i ett svep.
         JSON._i++                       ; skip opening "
         out := ""
         while (JSON._i <= JSON._n) {
-            c := SubStr(JSON._s, JSON._i, 1)
-            JSON._i++
-            if (c = '"')
-                break
+            q := InStr(JSON._s, '"', true, JSON._i)
+            b := InStr(JSON._s, "\", true, JSON._i)
+            if (!q)                     ; oavslutad strang - ta resten
+                q := JSON._n + 1
+            if (!b || q < b) {
+                out .= SubStr(JSON._s, JSON._i, q - JSON._i)
+                JSON._i := q + 1
+                return out
+            }
+            out .= SubStr(JSON._s, JSON._i, b - JSON._i)
+            JSON._i := b + 1
+            c := "\"
             if (c = "\") {
                 e := SubStr(JSON._s, JSON._i, 1)
                 JSON._i++
