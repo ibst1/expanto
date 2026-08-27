@@ -246,7 +246,9 @@ AISuggestFor(short, long, v) {
          . "flera meningar) kan vara brev/mallar.`n"
          . "'file' MÅSTE vara ett av de befintliga filnamnen. Kommentaren ska vara mycket kort "
          . "(några ord). 'lang' MÅSTE alltid anges: frasens språk som ISO-kod (t.ex. sv eller en); "
-         . "för ett enstaka fackord, ange språket ordet tillhör. "
+         . "för ett enstaka fackord, ange språket ordet tillhör. Språk är ALDRIG en tagg — "
+         . "taggar som 'svenska' eller 'engelska' är förbjudna; en tvåspråkig fras anges "
+         . "med lang sv,en. "
          . "Svara enbart enligt schemat."
     user := "Befintliga kategorier: " ArrJoin(v.cats, ", ") "`n"
           . "Befintliga taggar: "     ArrJoin(v.tags, ", ") "`n"
@@ -273,6 +275,37 @@ AIMergeTags(existing, aiArr) {
         }
     }
     return ArrJoin(out, ",")
+}
+
+; Språk är en parameter, inte en tagg: modellen envisas ibland med taggar som
+; "svenska"/"engelska" trots promptregeln - de plockas bort här och blir
+; lang-värde i stället när 'lang' saknas (sv+en tillsammans -> "sv,en").
+_AISanitizeLang(s) {
+    if !(s is Map)
+        return s
+    langMap := Map("svenska", "sv", "swedish", "sv", "sv", "sv"
+                 , "engelska", "en", "english", "en", "en", "en")
+    seen := Map()
+    if (s.Has("tags") && s["tags"] is Array) {
+        keep := []
+        for t in s["tags"] {
+            tl := StrLower(Trim(t))
+            if langMap.Has(tl)
+                seen[langMap[tl]] := true
+            else
+                keep.Push(t)
+        }
+        s["tags"] := keep
+    }
+    if (!s.Has("lang") || Trim(s["lang"]) = "") {
+        if (seen.Has("sv") && seen.Has("en"))
+            s["lang"] := "sv,en"
+        else if seen.Has("sv")
+            s["lang"] := "sv"
+        else if seen.Has("en")
+            s["lang"] := "en"
+    }
+    return s
 }
 
 ; ── WV2 message entry point (called from OnWebMessageReceived) ─────────────────
@@ -394,7 +427,7 @@ _AIDoSuggest(p) {
         return
     }
     try {
-        s := AISuggestFor(p.trigger, p.phrase, AICollectVocab())
+        s := _AISanitizeLang(AISuggestFor(p.trigger, p.phrase, AICollectVocab()))
     } catch as e {
         wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", e.Message, "live", p.live)) ")")
         return
@@ -427,7 +460,7 @@ _AIAutoFillNew(filepath, trigger) {
         && Trim(hs.comment) != "" && Trim(hs.language) != "")
         return
     try
-        s := AISuggestFor(hs.short, Unescape_CC(hs.long), AICollectVocab())
+        s := _AISanitizeLang(AISuggestFor(hs.short, Unescape_CC(hs.long), AICollectVocab()))
     catch
         return
     ändrad := false
@@ -479,7 +512,7 @@ _AIDoEBatch(ids) {
         }
         wv2Core.ExecuteScriptAsync("window.setAiBatchStatus && window.setAiBatchStatus(" JSON.Dump(done + 1) "," total ")")
         try {
-            s := AISuggestFor(hs.short, hs.long, v)
+            s := _AISanitizeLang(AISuggestFor(hs.short, hs.long, v))
         } catch {
             skipped++
             continue
@@ -487,8 +520,12 @@ _AIDoEBatch(ids) {
         cat     := (s.Has("category") && Trim(s["category"]) != "") ? Trim(s["category"]) : hs.category
         cmt     := (s.Has("comment")  && Trim(s["comment"])  != "") ? Trim(s["comment"])  : hs.comment
         newTags := AIMergeTags(hs.tags, s.Has("tags") ? s["tags"] : [])
+        ; språket är en parameter: fyll i AI:ts lang-förslag när frasen saknar
+        ; eget - men skriv aldrig över ett manuellt satt värde
+        newLang := (Trim(hs.language) = "" && s.Has("lang") && Trim(s["lang"]) != "")
+            ? s["lang"] : hs.language
         SaveHotstring(hs.filepath, hs.short, hs.options, hs.long, cat, cmt,
-            ArrJoin(hs.aliases, ","), ts, ArrJoin(hs.apps, ","), newTags, hs.language, , hs.disabled ? 1 : 0,
+            ArrJoin(hs.aliases, ","), ts, ArrJoin(hs.apps, ","), newTags, newLang, , hs.disabled ? 1 : 0,
             , IsObject(hs.customFields) ? hs.customFields : Map(), hs.url, _HsAlts(hs), _HsAltNames(hs))
         changedFiles[hs.filepath] := true
         done++

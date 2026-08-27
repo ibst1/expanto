@@ -390,6 +390,8 @@ const LANG = {
     'tb.view': 'Visa', 'tb.maint': 'Underhåll', 'tb.settings': 'Inställningar',
     'tb.unlock': 'Lås upp',
     'gen.toolbarIcons': 'Endast ikoner i verktygsraden',
+    'status.aiBatch': (d, t) => `✨ AI-taggar ${d}/${t}…`,
+    'status.aiBatchDone': 'AI-taggning klar',
     'recent.usedLabel': 'Senast använda', 'recent.editedLabel': 'Senast redigerade',
     'nav.maint': 'Underhåll', 'sp.maint.title': 'Underhåll',
     'maint.dupes.title': 'Dubblettdetektering',
@@ -841,6 +843,8 @@ const LANG = {
     'tb.view': 'View', 'tb.maint': 'Maintenance', 'tb.settings': 'Settings',
     'tb.unlock': 'Unlock',
     'gen.toolbarIcons': 'Icons only in the toolbar',
+    'status.aiBatch': (d, t) => `✨ AI tagging ${d}/${t}…`,
+    'status.aiBatchDone': 'AI tagging finished',
     'recent.usedLabel': 'Recently used', 'recent.editedLabel': 'Recently edited',
     'nav.maint': 'Maintenance', 'sp.maint.title': 'Maintenance',
     'maint.dupes.title': 'Duplicate detection',
@@ -2114,9 +2118,20 @@ window.updateAiUsage = function(text) {
 
 window.setAiBatchStatus = function(done, total) {
   const btn = document.getElementById('btnAiBatchAll');
-  if (!btn) return;
-  btn.textContent = (done && total) ? T('ai.batch.progress', done, total) : T('ai.batch.idle');
-  btn.disabled = done > 0 && done < total;
+  if (btn) {
+    btn.textContent = (done && total) ? T('ai.batch.progress', done, total) : T('ai.batch.idle');
+    btn.disabled = done > 0 && done < total;
+  }
+  // AI-taggning kan ta lång tid - förloppet ska synas i statusfältet även
+  // när Underhållspanelen är stängd. (0,0) betyder att körningen är klar.
+  const sa = document.getElementById('statusAi');
+  if (sa) {
+    const running = done > 0 && total > 0;
+    const wasRunning = !sa.classList.contains('hidden');
+    sa.classList.toggle('hidden', !running);
+    sa.textContent = running ? T('status.aiBatch', done, total) : '';
+    if (!running && wasRunning) setStatus(T('status.aiBatchDone'));
+  }
 };
 
 window.updatePhrase = function(hs) {
