@@ -294,11 +294,20 @@ InitGuiHotkeys()
 DllCall("dwmapi\DwmSetWindowAttribute", "ptr", wv2Win.hwnd, "uint", 20, "int*", 1, "uint", 4)
 
 ; ── Create WebView2 controller ────────────────────────────────────────────────
+; Our OWN user data folder. Passing "" makes lib\WebView2.ahk fall back to
+; %LOCALAPPDATA%\Microsoft\Edge\User Data — Edge's own profile — which WebView2
+; cannot share with a running browser. The failure looks different per machine:
+; ERROR_INVALID_STATE (0x8007139F) on one, a create call that simply never
+; returns on another. This script only ever worked because it happened to reach
+; that folder before Edge did; Encore, starting later, lost the same race.
+; A browser profile belongs in LOCALAPPDATA, never in a synced OneDrive folder.
+global wv2DataDir := EnvGet("LOCALAPPDATA") "\Expanto\WebView2"
+try DirCreate(wv2DataDir)
 global wv2Ctrl := WebView2.create(
     wv2Win.hwnd,          ; parent HWND
     ,                     ; no callback → synchronous .await()
     0,                    ; no pre-created environment
-    "",                   ; default data dir
+    wv2DataDir,           ; own user data folder, never Edge's
     "",                   ; auto-detect Edge runtime
     0,                    ; no environment options
     A_ScriptDir "\lib\WebView2Loader.dll"
@@ -445,10 +454,11 @@ OnProcessFailed(sender, args) {
 }
 
 ReinitWebView2() {
-    global wv2Core, wv2Ctrl, wv2Win, g_hkMarkWord
+    global wv2Core, wv2Ctrl, wv2Win, wv2DataDir, g_hkMarkWord
     wv2Core := 0   ; nullify before releasing old ctrl so no dangling COM pointer
     try {
-        wv2Ctrl := WebView2.create(wv2Win.hwnd, , 0, "", "", 0, A_ScriptDir "\lib\WebView2Loader.dll")
+        wv2Ctrl := WebView2.create(wv2Win.hwnd, , 0, wv2DataDir, "", 0
+            , A_ScriptDir "\lib\WebView2Loader.dll")
         wv2Ctrl.Fill()
         wv2Core := wv2Ctrl.CoreWebView2
         wv2Core.add_NavigationCompleted(OnNavigationCompleted)
