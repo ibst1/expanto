@@ -17,10 +17,24 @@ DllCall("SetThreadDpiAwarenessContext", "ptr", -4)
 ; forensik. Loggar till error.log bredvid skriptet och låter tråden avslutas
 ; (returnerar 1 = ingen dialog) - resten av appen lever vidare.
 OnError(_LogError)
+
+; Log next to the script only when that is a private place. These folders are
+; synced with OneDrive across two machines, and a shared error.log interleaves
+; lines from both - which actively misled a debugging session: the newest
+; entries had come from the OTHER computer. Per-machine, in LOCALAPPDATA.
+Felloggen() {
+    static sökväg := ""
+    if (sökväg != "")
+        return sökväg
+    mapp := EnvGet("LOCALAPPDATA") "\Expanto"
+    try DirCreate(mapp)
+    return sökväg := mapp "\error.log"
+}
+
 _LogError(e, mode) {
     try FileAppend(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "  " e.Message
         . " (" e.File ":" e.Line ")" (e.Extra != "" ? "  [" e.Extra "]" : "") "`r`n"
-        , A_ScriptDir "\error.log", "UTF-8")
+        , Felloggen(), "UTF-8")
     return 1
 }
 OnMessage(0x02E0, _WmDpiChanged)
