@@ -18,6 +18,8 @@
 ; .enc files are ALWAYS excluded from the AI features (see AIExcluded).
 ; ─────────────────────────────────────────────────────────────────────────────
 
+global g_encLockedNow    := (EnvGet("HSENC_SKIP") = "1")   ; this start follows a deliberate Lock
+global g_encPwStored     := false                ; the session pw came from the saved blob
 global g_encPw           := EnvGet("HSENC_PW")   ; session password (set on unlock; survives Reload via env)
 ; Skip .enc by default when no session PW exists (fresh start or after lock).
 ; Only load when user explicitly unlocks (prompt in UI/toolbar).
@@ -29,6 +31,133 @@ if (g_encPw != "")
 if (EnvGet("HSENC_SKIP") != "")
     try EnvSet("HSENC_SKIP")
 OnExit(EncOnExit)
+
+; ─────────────────────────────────────────────────────────────────────────────
+; Automatic unlock at startup (opt-in, off by default)
+;
+; The password is stored through DPAPI (CryptProtectData), which encrypts it
+; with the WINDOWS ACCOUNT's own key material — so the blob is readable only by
+; this user on this machine, and an offline copy of the disk is no use without
+; the account's credentials. It is written to %APPDATA%\Expanto, deliberately
+; NOT to a phrase folder: the .enc files live under OneDrive and sync to the
+; cloud, and that copy has to stay unreadable — which is the whole reason the
+; phrases are encrypted in the first place.
+;
+; What this trades away, stated plainly: with auto-unlock on, anything running
+; AS THIS USER on this machine can read the phrases without knowing the
+; password. Locking the screen is what stands between someone at the keyboard
+; and the phrases, exactly as it does for everything else already open.
+;
+; "Lås session" forgets the stored password as well as the session one, so a
+; lock is a real lock and not something the next start undoes.
+; ─────────────────────────────────────────────────────────────────────────────
+EncAutoPath() => A_AppData "\Expanto\enc.dpapi"
+; The module is included before the host declares `inifile`, so the path is
+; built here rather than read from that global.
+EncIniPath()  => A_AppData "\Expanto\settings.ini"
+EncAutoEnabled() => (IniRead(EncIniPath(), "Encryption", "AutoUnlock", "0") != "0")
+
+; DATA_BLOB is { DWORD cbData; BYTE *pbData } — 4 bytes, 4 of padding, then the
+; pointer on x64.
+_EncBlob(ptr, size) {
+    b := Buffer(16, 0)
+    NumPut("uint", size, b, 0)
+    NumPut("ptr", ptr, b, 8)
+    return b
+}
+
+; A fixed extra input to DPAPI, so this blob cannot be unwrapped as some other
+; program's and vice versa. Not a secret — it is right here in the source; it
+; only separates this use from every other one on the machine.
+_EncEntropy() {
+    static e := 0
+    if !e {
+        s := "Expanto.enc.autounlock.v1"
+        e := Buffer(StrPut(s, "UTF-8"), 0)
+        StrPut(s, e, "UTF-8")
+    }
+    return e
+}
+
+EncAutoSave(pw) {
+    try {
+        pwBuf := Buffer(StrPut(pw, "UTF-8"), 0)
+        StrPut(pw, pwBuf, "UTF-8")
+        ent := _EncEntropy()
+        out := Buffer(16, 0)
+        ; CRYPTPROTECT_UI_FORBIDDEN (1): never put UI on screen from here.
+        ok := DllCall("crypt32\CryptProtectData"
+            , "ptr", _EncBlob(pwBuf.Ptr, pwBuf.Size - 1)     ; without the terminator
+            , "wstr", "Expanto encrypted phrases"
+            , "ptr", _EncBlob(ent.Ptr, ent.Size)
+            , "ptr", 0, "ptr", 0, "uint", 1, "ptr", out, "int")
+        if !ok
+            return false
+        size := NumGet(out, 0, "uint"), ptr := NumGet(out, 8, "ptr")
+        blob := Buffer(size)
+        DllCall("RtlMoveMemory", "ptr", blob, "ptr", ptr, "uptr", size)
+        DllCall("LocalFree", "ptr", ptr)
+        DirCreate(A_AppData "\Expanto")
+        f := FileOpen(EncAutoPath(), "w")
+        f.RawWrite(blob, size)
+        f.Close()
+        return true
+    }
+    return false
+}
+
+EncAutoLoad() {
+    try {
+        if !FileExist(EncAutoPath())
+            return ""
+        raw := FileRead(EncAutoPath(), "RAW")
+        ent := _EncEntropy()
+        out := Buffer(16, 0)
+        ok := DllCall("crypt32\CryptUnprotectData"
+            , "ptr", _EncBlob(raw.Ptr, raw.Size)
+            , "ptr", 0
+            , "ptr", _EncBlob(ent.Ptr, ent.Size)
+            , "ptr", 0, "ptr", 0, "uint", 1, "ptr", out, "int")
+        if !ok
+            return ""                                  ; other account, other machine, or tampered
+        size := NumGet(out, 0, "uint"), ptr := NumGet(out, 8, "ptr")
+        buf := Buffer(size)
+        DllCall("RtlMoveMemory", "ptr", buf, "ptr", ptr, "uptr", size)
+        DllCall("LocalFree", "ptr", ptr)
+        return StrGet(buf, size, "UTF-8")
+    }
+    return ""
+}
+
+EncAutoForget() {
+    global g_encPwStored
+    g_encPwStored := false
+    try FileDelete(EncAutoPath())
+}
+
+; Tray toggle. Turning it on stores the password that is already unlocked, so
+; it takes effect without asking for it again.
+EncSetAuto(on) {
+    global g_encPw
+    try IniWrite(on ? 1 : 0, EncIniPath(), "Encryption", "AutoUnlock")
+    if !on {
+        EncAutoForget()
+        return
+    }
+    if (g_encPw != "")
+        EncAutoSave(g_encPw)
+}
+
+; The unlock itself, at module load: only on a normal start (not after a Lock),
+; only when nothing was handed over by a Reload, and only if the setting is on.
+if (g_encPw = "" && !g_encLockedNow && EncAutoEnabled()) {
+    _autoPw := EncAutoLoad()
+    if (_autoPw != "") {
+        g_encPw       := _autoPw
+        g_encSkip     := false
+        g_encPwStored := true
+    }
+}
 
 ; Hand the session password to the reloaded instance. MUST be called BEFORE Reload()
 ; (the new process inherits our env at launch — i.e. before OnExit would run).
@@ -42,6 +171,7 @@ EncHandoff() {
 ; encrypted phrases vanish from the list until the user unlocks again).
 EncLock(*) {
     global g_encPw, g_wv2Ready, g_hkMarkWord
+    EncAutoForget()          ; a lock the next start undoes is not a lock
     g_encPw    := ""
     g_wv2Ready := false
     if (g_hkMarkWord != "")
@@ -58,6 +188,8 @@ EncUnlock(*) {
         return
     g_encPw    := pw
     g_encSkip  := false
+    if EncAutoEnabled()      ; keep the stored copy in step with the real one
+        EncAutoSave(pw)
     g_wv2Ready := false
     if (g_hkMarkWord != "")
         try Hotkey(g_hkMarkWord, "Off")
@@ -77,6 +209,8 @@ global g_encModule := Map(
     "EncUnlockFile",  EncUnlockFile,
     "EncLock",        EncLock,
     "EncUnlock",      EncUnlock,
+    "EncSetAuto",     EncSetAuto,
+    "EncAutoEnabled", EncAutoEnabled,
     "EncHandoff",     EncHandoff)
 
 EncOnExit(reason, code) {
@@ -325,6 +459,11 @@ EncFileRead(path, forWrite := false) {
         } catch Error as e {
             if (e.Message != "WRONGPW")
                 throw e
+            ; A stored password that no longer fits (the files were re-encrypted
+            ; with a new one) would otherwise be retried at every start and
+            ; prompt every time. Drop it and let the prompt below replace it.
+            if g_encPwStored
+                EncAutoForget()
             g_encPw := ""                            ; wrong → forget and re-prompt
             attempts++
             SplitPath(path, &nm)

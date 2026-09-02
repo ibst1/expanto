@@ -210,6 +210,11 @@ _AT(key) {
         "tray.reload",     ["Ladda om fraser",              "Reload phrases"],
         "tray.reloadapp",  ["Ladda om appen",                 "Reload app"],
         "tray.unlock",     ["🔓 Lås upp krypterade filer",  "🔓 Unlock encrypted files"],
+        "tray.autounlock", ["Lås upp automatiskt vid start", "Unlock automatically at startup"],
+        "tray.autoon",     ["Lösenordet sparas nu skyddat av ditt Windows-konto (DPAPI) i AppData — inte i OneDrive.`n`nDet betyder att allt som kör som du på den här datorn kan läsa fraserna utan lösenordet. Molnkopian är fortfarande oläsbar.",
+                            "The password is now stored protected by your Windows account (DPAPI) in AppData — not in OneDrive.`n`nThat means anything running as you on this machine can read the phrases without the password. The cloud copy stays unreadable."],
+        "tray.autooff",    ["Det sparade lösenordet är borttaget. Du får ange det manuellt igen.",
+                            "The stored password has been deleted. You will be asked for it again."],
         "tray.exit",       ["Avsluta",                      "Exit"],
         "url.title",       ["Länk till frasen",             "Phrase link"],
         "url.body",        ["Den här frasen har en länk:",  "This phrase has a link:"],
@@ -231,13 +236,40 @@ _RebuildTrayMenu() {
     A_TrayMenu.Add(_AT("tray.show"),   (*) => ShowWv2Win())
     A_TrayMenu.Add(_AT("tray.reload"), (*) => ReloadPhrases())
     A_TrayMenu.Add(_AT("tray.reloadapp"), (*) => Reload())
-    if (EncLoaded() && _HasLockedEncFiles()) {
+    if (EncLoaded() && _HasEncFiles()) {
         A_TrayMenu.Add()
-        A_TrayMenu.Add(_AT("tray.unlock"), (*) => EncUnlock())
+        if _HasLockedEncFiles()
+            A_TrayMenu.Add(_AT("tray.unlock"), (*) => EncUnlock())
+        A_TrayMenu.Add(_AT("tray.autounlock"), _ToggleAutoUnlock)
+        if EncAutoEnabled()
+            A_TrayMenu.Check(_AT("tray.autounlock"))
     }
     A_TrayMenu.Add()
     A_TrayMenu.Add(_AT("tray.exit"),   (*) => ExitApp())
     A_TrayMenu.Default := _AT("tray.show")
+}
+
+; Auto-unlock keeps the session password in a DPAPI blob under AppData, so it
+; survives a restart without being readable anywhere else. Say what changes,
+; both ways — this is the one setting here that trades security for comfort.
+_ToggleAutoUnlock(*) {
+    on := !EncAutoEnabled()
+    EncSetAuto(on)
+    _RebuildTrayMenu()
+    if (on && g_encPw = "")
+        TrayTip(_AT("tray.autounlock"), _AT("tray.unlock"))   ; nothing to store until it is unlocked once
+    else
+        MsgBox(_AT(on ? "tray.autoon" : "tray.autooff"), "Expanto", "Iconi")
+}
+
+; At least one .enc phrase file exists at all - locked or not.
+_HasEncFiles() {
+    global HS_folders_ALL
+    for folder in HS_folders_ALL
+        for file in folder.files
+            if IsEncPhrasePath(file.fullpath)
+                return true
+    return false
 }
 
 ; True while the session is locked (no password) and at least one .enc phrase
@@ -2672,6 +2704,35 @@ Build_HS_ALL() {
         }
 }
 
+; A phrase line on disk is  :options:short::BODY ; META  - and BODY is free
+; text that may well contain a semicolon ("Provet togs 12/3; svar inkom 14/3").
+;
+; Splitting it with a lazy body and an optional tail - "(.*?)(?:\s*;\s*(.*))?$"
+; as this did - cuts at the FIRST semicolon, so every such phrase loaded
+; truncated, and saving it wrote the truncation back to disk. Reported
+; 2026-09-01: "phrases containing a semicolon lose all text after it when I
+; save", and step-through insertion choking on the same phrases.
+;
+; META is machine-written by BuildMeta and always begins with a known key, so
+; the split is anchored on that: the LAST semicolon whose tail starts with one
+; is the real separator. Scanning to the last also keeps a meta value that
+; itself contains a semicolon intact (a comment=, say), since the tail after
+; THAT one no longer looks like meta. What stays ambiguous is a body ending in
+; something like "; url=x" with no meta after it - and that case was broken
+; before too, so nothing regresses.
+SplitBodyAndMeta(rest, &body, &meta) {
+    static metaKey := "i)^(?:cat|lang|comment|tags|disabled|priority|aliases|apps|lastupdated|url|alts|altnames)="
+    body := rest, meta := "", pos := 1
+    while (found := InStr(rest, ";", false, pos)) {
+        tail := Trim(SubStr(rest, found + 1))
+        if RegExMatch(tail, metaKey) {
+            body := SubStr(rest, 1, found - 1)
+            meta := tail
+        }
+        pos := found + 1
+    }
+}
+
 ParseHotstringFile(path, folderpath, folderid) {
     local m, mc, ml, mm, mt, md, ma, mapp, mf, mpos, mlu, murl, customFields, knownMeta, cfk
     out   := []
@@ -2683,13 +2744,13 @@ ParseHotstringFile(path, folderpath, folderid) {
         line := Trim(lines[i])
         if (line = "" || SubStr(line, 1, 1) = ";")
             continue
-        if !RegExMatch(line, "^:([^:]*):([^:]+)::(.*?)(?:\s*;\s*(.*))?$", &m)
+        if !RegExMatch(line, "^:([^:]*):([^:]+)::(.*)$", &m)
             continue
 
         options := m[1]
         short   := m[2]
-        long    := Trim(m[3])
-        meta    := m[4]
+        SplitBodyAndMeta(m[3], &bodyRaw, &meta)
+        long    := Trim(bodyRaw)
 
         ; Multi-line continuation block
         if (long = "" && i < lines.Length && Trim(lines[i + 1]) = "(") {
