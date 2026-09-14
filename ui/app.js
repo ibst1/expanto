@@ -220,7 +220,7 @@ const LANG = {
     'nav.aimaint': 'AI-underhåll', 'nav.spell': 'Stavningskontroll', 'nav.enc': 'Krypterade fraser',
     'col.nr': '#', 'col.trigger': 'Trigger', 'col.phrase': 'Fras',
     'col.cat': 'Kategori', 'col.tags': 'Taggar', 'col.lang': 'Språk', 'col.file': 'Fil',
-    'field.trim': 'Trimma (ta bort inledande/avslutande blanksteg vid sparande)',
+    'field.trim': 'Trimma (ta bort inledande/avslutande blanksteg i trigger och fras vid sparande)',
     'list.loading': 'Laddar fraser…', 'list.noMatch': 'Inga fraser matchar.',
     'list.recentUsed': 'Inga nyligen använda fraser.',
     'list.recentEdited': 'Inga nyligen redigerade fraser.',
@@ -675,7 +675,7 @@ const LANG = {
     'nav.aimaint': 'AI maintenance', 'nav.spell': 'Spell check', 'nav.enc': 'Encrypted phrases',
     'col.nr': '#', 'col.trigger': 'Trigger', 'col.phrase': 'Phrase',
     'col.cat': 'Category', 'col.tags': 'Tags', 'col.lang': 'Language', 'col.file': 'File',
-    'field.trim': 'Trim (remove leading/trailing whitespace when saving)',
+    'field.trim': 'Trim (remove leading/trailing whitespace from trigger and phrase when saving)',
     'list.loading': 'Loading phrases…', 'list.noMatch': 'No phrases match.',
     'list.recentUsed': 'No recently used phrases.',
     'list.recentEdited': 'No recently edited phrases.',
@@ -2482,7 +2482,8 @@ function bindUI() {
     const inp = e.target.closest('.col-filter');
     if (!inp) return;
     const col = inp.dataset.col;
-    if (col in g_colFilters) { g_colFilters[col] = inp.value.trim().toLowerCase(); applyFilter(); }
+    // Not trimmed: " f " in the trigger filter means exactly that trigger
+    if (col in g_colFilters) { g_colFilters[col] = inp.value.trim() ? inp.value.toLowerCase() : ''; applyFilter(); }
   });
 
   // Column sort (event delegation)
@@ -3374,8 +3375,8 @@ function renderDictFolderList(paths) {
 }
 
 function pushSearchHistory(q) {
-  q = (q || '').trim();
-  if (!q) return;
+  q = q || '';
+  if (!q.trim()) return;   // keep the raw text: " f " must come back as " f "
   const i = g_searchHistory.indexOf(q);
   if (i >= 0) g_searchHistory.splice(i, 1);
   g_searchHistory.push(q);
@@ -3385,7 +3386,11 @@ function pushSearchHistory(q) {
 
 // ── Filter & render list ──────────────────────────────────────────────────────
 function applyFilter() {
-  const q  = document.getElementById('searchBox').value.trim().toLowerCase();
+  // Whitespace is significant in triggers and phrases (" f " → " för "), so the
+  // query is NOT trimmed: " f " must find that trigger, not every "f". Only a
+  // query that is nothing but whitespace counts as empty.
+  const qRaw = document.getElementById('searchBox').value;
+  const q  = qRaw.trim() ? qRaw.toLowerCase() : '';
   const cf = g_colFilters;
   g_filtered = g_phrases.filter(p => {
     if (!g_showHiddenFiles && _isPhraseHidden(p.file)) return false;
@@ -3412,7 +3417,9 @@ function applyFilter() {
     if (!q) return true;
     const altText = (p.alts || []).join(' ') + ' ' + (p.altNames || []).join(' ');
     if (g_fuzzy) return fuzzyMatch(q, (p.trigger + ' ' + p.phrase + ' ' + altText + ' ' + p.cat).toLowerCase());
-    return (p.trigger + p.phrase + altText + p.cat + p.comment + p.tags + (p.aliases||'')).toLowerCase().includes(q);
+    // Fields joined with a newline: a match never straddles two fields, and a
+    // leading/trailing space in the query only matches inside one field.
+    return [p.trigger, p.phrase, altText, p.cat, p.comment, p.tags, p.aliases || ''].join('\n').toLowerCase().includes(q);
   });
   if (g_recentMode === 'used') {
     g_filtered = g_filtered.filter(p => g_usageTimes[p.id]);
@@ -3955,8 +3962,11 @@ function _bulkAddTag() {
   renderBulkTagCloud();
 }
 
-function _parseTriggerAlias(val) {
-  const parts = val.split(',').map(s => s.trim()).filter(Boolean);
+// Whitespace in a trigger is significant (" o " → " och "), so it is only
+// stripped when the Trim checkbox is on. With it off, only the whitespace
+// around the separating commas goes ("btw, btww" still gives two clean triggers).
+function _parseTriggerAlias(val, trim = true) {
+  const parts = (trim ? val.split(',').map(s => s.trim()) : val.split(/\s*,\s*/)).filter(Boolean);
   return { trigger: parts[0] || '', aliases: parts.slice(1).join(', ') };
 }
 
@@ -4112,9 +4122,9 @@ function saveEdited(insertAfterSave = false) {
   opts = setOpt(opts, '?', document.getElementById('fOptQ').checked);
   opts = setOpt(opts, 'O', document.getElementById('fOptO').checked);
   opts = setOpt(opts, 'C', document.getElementById('fOptC').checked);
-  const { trigger: newTrigger, aliases: newAliases } = _parseTriggerAlias(document.getElementById('fTrigger').value);
-  const rawPhrase    = document.getElementById('fPhrase').value;
   const shouldTrim   = document.getElementById('phraseTrim')?.checked;
+  const { trigger: newTrigger, aliases: newAliases } = _parseTriggerAlias(document.getElementById('fTrigger').value, shouldTrim);
+  const rawPhrase    = document.getElementById('fPhrase').value;
   const savedPhrase  = shouldTrim ? rawPhrase.trim() : rawPhrase;
   const { alts, altNames } = _collectAltData(shouldTrim);
   const updated = {
@@ -4308,14 +4318,14 @@ function requestLinePreview() {
       showStatusLine('');
       return;
     }
-    const { trigger, aliases } = _parseTriggerAlias(trigRaw);
+    const shouldTrim = document.getElementById('phraseTrim')?.checked;
+    const { trigger, aliases } = _parseTriggerAlias(trigRaw, shouldTrim);
     const p = g_phrases.find(x => x.id === g_selId);
     let opts = (p && p.options) || '';
     opts = setOpt(opts, '*', document.getElementById('fOptStar')?.checked);
     opts = setOpt(opts, '?', document.getElementById('fOptQ')?.checked);
     opts = setOpt(opts, 'O', document.getElementById('fOptO')?.checked);
     opts = setOpt(opts, 'C', document.getElementById('fOptC')?.checked);
-    const shouldTrim = document.getElementById('phraseTrim')?.checked;
     const raw = val('fPhrase');
     const { alts, altNames } = _collectAltData(shouldTrim);
     postToAhk({
@@ -4468,9 +4478,9 @@ function _renderNewPhraseMetaHint(path, metaFields) {
 }
 
 function saveNewPhrase(insertAfterSave = false) {
-  const { trigger, aliases } = _parseTriggerAlias(document.getElementById('fTrigger').value);
-  const rawPhrase  = document.getElementById('fPhrase').value;
   const shouldTrim = document.getElementById('phraseTrim')?.checked;
+  const { trigger, aliases } = _parseTriggerAlias(document.getElementById('fTrigger').value, shouldTrim);
+  const rawPhrase  = document.getElementById('fPhrase').value;
   const phrase     = shouldTrim ? rawPhrase.trim() : rawPhrase;
   const { alts, altNames } = _collectAltData(shouldTrim);
   const file       = document.getElementById('fNewFile').value;
