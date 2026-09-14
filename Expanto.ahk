@@ -51,8 +51,8 @@ _WmDpiChanged(wParam, lParam, msg, hwnd) {
 try
     TraySetIcon(A_ScriptDir "\app.ico")
 
-; CapsLock suppression is registered dynamically in InitGlobalHotkeys based on the
-; "Läs CapsLock själv" setting — disable it if another script already handles CapsLock.
+; CapsLock suppression (SetCapsLockState AlwaysOff) is applied in InitGlobalHotkeys
+; when the "Läs CapsLock själv" setting is on. Off by default - see the note there.
 
 !f5::Reload()  ; Dev hotkey
 
@@ -144,6 +144,7 @@ global g_lastFired   := ""
 global g_lastSent    := ""
 global g_lastCaretBack := 0
 global g_typedBuf    := ""
+global g_typedIH     := ""   ; the InputHook feeding g_typedBuf (see StartTypedBuffer)
 
 ; ── Coupled dynamic fields (per-key value memory; RAM only) ───────────────────
 global g_coupleMem      := Map()   ; field → Map(keyValue → value)
@@ -586,7 +587,7 @@ OnWebMessageReceived(sender, args) {
                 SavePhraseFromJs(p)
                 g_wv2Shown := false
                 wv2Win.Hide()
-                newId := pFile "|" Trim(p["trigger"])
+                newId := pFile "|" p["trigger"]
                 SetTimer(() => DoDirectInsert(newId), -1)
                 SetTimer(() => _RebuildAndNotify(pFile), -3000)
             }
@@ -1203,7 +1204,7 @@ OnWebMessageReceived(sender, args) {
         opts := msg.Has("options") ? msg["options"] : (hs ? hs.options : "")
         line := ""
         try line := BuildPhraseLine(opts
-            , Trim(msg.Has("trigger") ? msg["trigger"] : "")
+            , msg.Has("trigger") ? msg["trigger"] : ""
             , msg.Has("phrase")  ? msg["phrase"]  : ""
             , msg.Has("cat")     ? msg["cat"]     : ""
             , msg.Has("comment") ? msg["comment"] : ""
@@ -2230,7 +2231,9 @@ FirstWritableFile() {
 SavePhraseFromJs(p) {
     hs        := FindHsById(p["id"])
     origShort := hs ? hs.short : p["trigger"]
-    newShort  := Trim(p["trigger"])
+    ; Whitespace in the trigger is significant (" o " → " och "); the GUI's Trim
+    ; checkbox decides whether it is stripped, not this function.
+    newShort  := p["trigger"]
     options   := p.Has("options") ? p["options"] : (hs ? hs.options : "")
     disabled  := p.Has("disabled") ? p["disabled"] : 0
     aliases   := p.Has("aliases")  ? p["aliases"]  : ""
@@ -3134,7 +3137,16 @@ Escape_CC(s) {
     s := StrReplace(s, "`r", "")
     s := StrReplace(s, "`n", "``n")
     s := StrReplace(s, Chr(58) Chr(58), Chr(58) "``" Chr(58))
+    ; Leading/trailing spaces and tabs cannot survive the one-line file format as
+    ; they are: the body is followed by " ; meta" and the parser trims it. Store
+    ; them as AHK's own `s / `t escapes so " och " round-trips exactly.
+    if RegExMatch(s, "s)^([ \t]*)(.*?)([ \t]*)$", &m)
+        s := _EscEdgeWs(m[1]) m[2] _EscEdgeWs(m[3])
     return s
+}
+
+_EscEdgeWs(ws) {
+    return StrReplace(StrReplace(ws, " ", "``s"), "`t", "``t")
 }
 
 ; ── Alternative phrase texts (alts= meta field) ───────────────────────────────
@@ -3216,6 +3228,7 @@ ArrJoin(arr, sep := ",") {
 Unescape_CC(s) {
     s := StrReplace(s, "``n", "`n")
     s := StrReplace(s, "``t", "`t")
+    s := StrReplace(s, "``s", " ")
     s := StrReplace(s, "``b", "`b")
     return s
 }
@@ -3401,9 +3414,16 @@ _TypeGuardTake(&ih) {
 ; taking the keyboard away from the user, so guard against it here. If our own text
 ; turns up in the buffer, drop it instead of replaying the phrase on top of itself.
 _TypeGuardReplay(held, ours := "") {
+    global g_typedBuf
     held := _TypeGuardFilter(held, ours)
-    if (held != "")
+    if (held != "") {
+        ; The guard sits above the typed-buffer hook on the InputHook stack and
+        ; suppresses these keys, so that hook never saw them - and the replay is
+        ; SendLevel 0, which it ignores by design. Feed them in by hand so the
+        ; next trigger's case (typed straight after an expansion) is still known.
+        g_typedBuf := SubStr(g_typedBuf held, -40)
         SendInput("{Text}" held)
+    }
 }
 
 _TypeGuardFilter(pending, ours) {
@@ -3524,7 +3544,10 @@ HsFire(hs, *) {
     g_dbgPhase := ""
     ec    := A_EndChar
     ; What is really on screen to be replaced — read here, while A_ThisHotkey is fresh.
-    typed := _FiredTrigger(hs) ec
+    ; ConformCase must compare against this too, not hs.short: an alias shares the
+    ; hs object, so for an alias hs.short is a different word and never matched.
+    trig  := _FiredTrigger(hs)
+    typed := trig ec
     ; Hold the user's next keystrokes from the FIRST line, not merely around the send.
     ; The identity guard's file check, WinGetTitle, the UIA probe and above all
     ; ClipboardAll are each slow enough for a fast typist to beat the insert into the
@@ -3605,7 +3628,7 @@ HsFire(hs, *) {
                 if omni                  ; clear URL-bar autocomplete residue before insert
                     _OmniboxPrepare(typed)
                 tStage := A_TickCount
-                SendExpanded(noConform ? res.text : ConformCase(res.text, hs.short, ec))
+                SendExpanded(noConform ? res.text : ConformCase(res.text, trig, ec))
                 _DbgMark("send", tStage)
                 ; Reproduce the ending char AHK swallowed — function hotstrings don't auto-send
                 ; it. Skip when the caret was repositioned ({cursor}) so it can't land mid-text.
@@ -3623,7 +3646,7 @@ HsFire(hs, *) {
                 ClearPendingRuns()                 ; avbruten fältdialog kör ingenting
         } else {
             noConform := InStr(hs.options, "C") && !InStr(hs.options, "C0")
-            out := noConform ? unesc : ConformCase(unesc, hs.short, ec)
+            out := noConform ? unesc : ConformCase(unesc, trig, ec)
             sentEc := (ec != "" && !InStr(hs.options, "O", true)) ? ec : ""
             tStage := A_TickCount
             omni := _IsOmniboxFocused()
@@ -4502,17 +4525,37 @@ PromptPhraseVariant(variants, names := "", trigger := "") {
 
 ; ── Case conformity (reproduce AHK's built-in behaviour for function callbacks) ─
 
+; An InputHook ends SILENTLY once its collected text reaches MaxLength - 1023
+; characters by default - and OnChar never fires again. After ~1000 typed
+; characters g_typedBuf went stale, ConformCase saw a tail that did not match the
+; trigger and gave up: "Altv" came out as "alternativ" until the next restart.
+; (The hint popup died the same way.) Give the hook a large limit, recycle it from
+; OnChar well before that limit - same thread, no gap - and restart from OnEnd as a
+; fallback for any other way it might end.
 StartTypedBuffer() {
-    ih := InputHook("VI")   ; V=visible (don't suppress), I=ignore AHK-sent keystrokes
+    global g_typedIH
+    ih := InputHook("VI L4000")   ; V=visible (don't suppress), I=ignore AHK-sent keystrokes
     ih.NotifyNonText := true
     ih.OnChar    := TypedBufChar
     ih.OnKeyDown := TypedBufKey
+    ih.OnEnd     := TypedBufEnded
+    g_typedIH := ih
     ih.Start()
+}
+
+TypedBufEnded(ih) {
+    global g_typedIH
+    if (ih == g_typedIH)          ; a hook we recycled ourselves has already been replaced
+        StartTypedBuffer()
 }
 
 TypedBufChar(ih, char) {
     global g_typedBuf, g_hintWord, g_hintMinLen, g_hintsEnabled, g_hintSuppressed
     g_typedBuf := SubStr(g_typedBuf char, -40)
+    if (StrLen(ih.Input) >= 3500) {   ; recycle before L4000 ends the hook on its own
+        ih.Stop()
+        StartTypedBuffer()
+    }
     if (!g_hintsEnabled || g_hintSuppressed || !HintActiveOK())
         return
     if (char ~= "[\p{L}\p{N}_-]") {
@@ -4575,7 +4618,11 @@ ConformCase(text, short, ec) {
         return text
     if (StrLen(letters) >= 2 && SubStr(letters, 2, 1) !== StrLower(SubStr(letters, 2, 1)))
         return StrUpper(text)
-    return StrUpper(SubStr(text, 1, 1)) SubStr(text, 2)
+    ; Capitalize the first LETTER, not the first character: a phrase like " och "
+    ; starts with a space, and upper-casing that would change nothing.
+    if RegExMatch(text, "\p{L}", &ml)
+        return SubStr(text, 1, ml.Pos - 1) StrUpper(ml[0]) SubStr(text, ml.Pos + 1)
+    return text
 }
 
 ; ══════════════════════════════════════════════════════════════════════════════
@@ -5642,10 +5689,6 @@ ApplyHotkeyPair(&stored, newKey, fn) {
     stored := newKey
 }
 
-_CapsCaptureAction(*) {
-    SetCapsLockState "AlwaysOff"
-}
-
 _CapsResetIfOn(*) {
     if GetKeyState("CapsLock", "T")
         SetCapsLockState "Off"
@@ -5698,10 +5741,20 @@ _HkEffective(key) {
 
 InitGlobalHotkeys() {
     global inifile, g_hkOpenGui, g_hkUndo, g_hkMarkWord, g_hkLastFired, g_hkInsert, g_hkInsertStep
-    if (IniRead(inifile, "Hotkeys", "CapsCapture", "1") = "1")
-        Hotkey("~*CapsLock", _CapsCaptureAction, "On")
+    ; "Läs CapsLock själv". SetCapsLockState AlwaysOff makes THIS script's hook
+    ; swallow every CapsLock event - down AND up - before any hook installed
+    ; earlier gets to see it. Setting it from a ~*CapsLock handler was worse
+    ; still: the down had already passed to the other hooks, the up was then
+    ; swallowed, and Sostenuto (CapsLock -> right Ctrl) was left holding RCtrl
+    ; for good - every keystroke a Ctrl chord until it was restarted. Twice,
+    ; both right after an Expanto restart put its hook ahead (2026-09-06 08:00,
+    ; 2026-09-09 06:45). Off by default: one script owns CapsLock, and it is
+    ; not this one. When on, applied whole from the start, so no press is ever
+    ; half-processed; when off, the attribute is dropped again at once.
+    if (IniRead(inifile, "Hotkeys", "CapsCapture", "0") = "1")
+        SetCapsLockState "AlwaysOff"
     else
-        try Hotkey("~*CapsLock", _CapsCaptureAction, "Off")
+        SetCapsLockState()
     ApplyHotkeyPair(&g_hkOpenGui,    _HkEffective("OpenGui"),    ShowHideWv2Win)
     ApplyHotkeyPair(&g_hkUndo,       _HkEffective("Undo"),       UndoLastExpansion)
     ApplyHotkeyPair(&g_hkMarkWord,   _HkEffective("MarkWord"),   ExpandMarkedWord)

@@ -509,7 +509,10 @@ button.vm-row.active { color: var(--accent2); }
 /* ── Right-side panels (detail + file settings share layout) ── */
 #detailPanel,
 #maintPanel { overflow-y: auto; }
-#fileSettingsPanel, #maintPanel {
+/* #detailPanel must carry a width of its own: without one it is sized by its
+   widest line of text (a long label behind "Mer"), and in a narrow window that
+   pushed the phrase list out of sight. The drag handle overrides it inline. */
+#detailPanel, #fileSettingsPanel, #maintPanel {
   width: 380px;
   min-width: 260px;
   background: var(--bg2);

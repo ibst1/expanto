@@ -84,8 +84,8 @@ A phrase file is a plain `.ahk` text file. Every non-comment line is a definitio
 ```
 
 - **`options`** — AutoHotkey hotstring options. Common ones: `*` (no ending key needed), `?` (triggers inside a word), `C` (case sensitive), `B0` (don't erase the trigger). Leave empty for defaults.
-- **`trigger`** — the abbreviation (case-adaptive unless `C` is used).
-- **`replacement`** — the phrase; line breaks are stored as `` `n ``.
+- **`trigger`** — the abbreviation (case-adaptive unless `C` is used). Spaces are allowed and significant: `:*?: o ::` fires on space‑o‑space.
+- **`replacement`** — the phrase; line breaks are stored as `` `n ``, and leading/trailing spaces and tabs as `` `s `` / `` `t `` (so `` `soch`s `` is ` och `). The editor's **Trim** checkbox controls whether such whitespace is kept when saving.
 - **Metadata** after ` ; ` (pipe-separated): `cat`, `tags`, `comment`, `lang`, `aliases`, `apps`, `url`, `lastupdated`, `priority`, `disabled` (`1` disables the phrase).
 - Lines starting with `;` are comments. The top of a file may contain `; @expanto key: value` headers for per-file settings (see [Per-file settings](#per-file-settings)).
 
