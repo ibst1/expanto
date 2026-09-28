@@ -93,6 +93,10 @@ _AIRequestClaude(systemPrompt, userPrompt, schema) {
         }
         throw Error("API " whr.Status ": " SubStr(respText, 1, 300))
     }
+    return _AIParseClaude(respText)
+}
+
+_AIParseClaude(respText) {
     resp := JSON.Load(respText)
     AIRecordUsage(resp)
     AIRecordTokens(resp)
@@ -105,6 +109,87 @@ _AIRequestClaude(systemPrompt, userPrompt, schema) {
     if (txt = "")
         throw Error("Tomt svar från modellen.")
     return JSON.Load(txt)
+}
+
+; ── Asynchronous request ──────────────────────────────────────────────────────
+; The live suggestion and the post-save auto-fill used to call the API on the
+; script's only thread: a synchronous Send blocks hotstrings, the WebView2
+; bridge and every timer for the whole round trip, so "Spara & infoga" waited
+; for an in-flight suggestion to finish before the window hid and the text
+; went in. ServerXMLHTTP in async mode hands the reply back through the message
+; loop instead; done(result, errMsg) runs when it is in (errMsg = "" on
+; success). The local LLM backend has no async transport, so there the call is
+; still made inline, as before.
+AIRequestAsync(systemPrompt, userPrompt, schema, done) {
+    global g_llmEnabled
+    if (IsSet(g_llmEnabled) && g_llmEnabled) {
+        try
+            res := LLMRequest(systemPrompt, userPrompt, schema)
+        catch as e {
+            done("", e.Message)
+            return
+        }
+        done(res, "")
+        return
+    }
+    _AIRequestClaudeAsync(systemPrompt, userPrompt, schema, done)
+}
+
+_AIRequestClaudeAsync(systemPrompt, userPrompt, schema, done, attempt := 1) {
+    global g_aiKey, g_aiModel
+    ; The throttle's Sleep loop would block just like the old request did, so
+    ; wait it out on a timer instead.
+    if !_AIThrottleFree(Round((StrLen(systemPrompt) + StrLen(userPrompt)) / 3)) {
+        SetTimer(() => _AIRequestClaudeAsync(systemPrompt, userPrompt, schema, done, attempt), -1500)
+        return
+    }
+    body := JSON.Dump(Map(
+        "model",         g_aiModel,
+        "max_tokens",    1024,
+        "system",        systemPrompt,
+        "messages",      [ Map("role", "user", "content", userPrompt) ],
+        "output_config", Map("format", Map("type", "json_schema", "schema", schema))))
+    xhr := ComObject("Msxml2.ServerXMLHTTP.6.0")
+    xhr.open("POST", "https://api.anthropic.com/v1/messages", true)
+    xhr.setRequestHeader("content-type",      "application/json")
+    xhr.setRequestHeader("x-api-key",         g_aiKey)
+    xhr.setRequestHeader("anthropic-version", "2023-06-01")
+    xhr.setTimeouts(0, 60000, 60000, 60000)
+    xhr.onreadystatechange := _OnChange
+    try xhr.send(body)
+    catch as e
+        done("", e.Message)
+    return
+
+    _OnChange(*) {
+        if (xhr.readyState != 4)
+            return
+        try xhr.onreadystatechange := ComValue(9, 0)   ; break the xhr <-> closure cycle
+        status := 0, respText := "", errText := ""
+        try status := xhr.status
+        catch as e
+            errText := e.Message
+        try respText := AIDecodeUTF8(xhr.responseBody)
+        if (status = 200) {
+            try
+                res := _AIParseClaude(respText)
+            catch as e {
+                done("", e.Message)
+                return
+            }
+            done(res, "")
+            return
+        }
+        if ((status = 429 || status = 529) && attempt < 5) {
+            SetTimer(() => _AIRequestClaudeAsync(systemPrompt, userPrompt, schema, done, attempt + 1)
+                   , -AIRetryAfter(xhr, attempt) * 1000)
+            return
+        }
+        if (status = 0)
+            done("", "Nätverksfel eller timeout" (errText != "" ? ": " errText : ""))
+        else
+            done("", "API " status ": " SubStr(respText, 1, 300))
+    }
 }
 
 AIDecodeUTF8(bodyBytes) {
@@ -148,21 +233,23 @@ AIRecordUsage(resp) {
 }
 
 AIThrottle(estTokens) {
+    while !_AIThrottleFree(estTokens)
+        Sleep 1500
+}
+
+; True when estTokens more fit under the per-minute budget right now.
+_AIThrottleFree(estTokens) {
     global g_aiTokenLog
     budget := 45000
-    loop {
-        now := A_TickCount
-        kept := [], used := 0
-        for e in g_aiTokenLog
-            if (now - e.t < 60000) {
-                kept.Push(e)
-                used += e.tokens
-            }
-        g_aiTokenLog := kept
-        if (used + estTokens <= budget)
-            return
-        Sleep 1500
-    }
+    now := A_TickCount
+    kept := [], used := 0
+    for e in g_aiTokenLog
+        if (now - e.t < 60000) {
+            kept.Push(e)
+            used += e.tokens
+        }
+    g_aiTokenLog := kept
+    return used + estTokens <= budget
 }
 
 AIRecordTokens(resp) {
@@ -230,6 +317,17 @@ AINewSchema() {
 }
 
 AISuggestFor(short, long, v) {
+    _AISuggestPrompts(short, long, v, &sys, &user)
+    return AIRequest(sys, user, AINewSchema())
+}
+
+; Same suggestion without blocking the script; done(result, errMsg).
+AISuggestForAsync(short, long, v, done) {
+    _AISuggestPrompts(short, long, v, &sys, &user)
+    AIRequestAsync(sys, user, AINewSchema(), done)
+}
+
+_AISuggestPrompts(short, long, v, &sys, &user) {
     sys := "Du organiserar textfraser (hotstrings) i ett bibliotek. För den givna frasen "
          . "ska du föreslå metadata.`n"
          . "ÅTERANVÄND befintliga kategorier och taggar i så stor utsträckning som möjligt — "
@@ -255,7 +353,6 @@ AISuggestFor(short, long, v) {
           . "Befintliga filer: "      ArrJoin(v.files, ", ") "`n`n"
           . "Trigger: " short "`n"
           . "Fras: "    long
-    return AIRequest(sys, user, AINewSchema())
 }
 
 AIMergeTags(existing, aiArr) {
@@ -426,23 +523,33 @@ _AIDoSuggest(p) {
         wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", "Filen är exkluderad från AI.", "live", p.live)) ")")
         return
     }
-    try {
-        s := _AISanitizeLang(AISuggestFor(p.trigger, p.phrase, AICollectVocab()))
-    } catch as e {
-        wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", e.Message, "live", p.live)) ")")
-        return
+    ; Asynchronous: the script stays free while the model answers, so typing,
+    ; hotstrings and a Save issued meanwhile are not held up. The UI drops a
+    ; reply whose seq is stale (the user kept typing) or that arrives after the
+    ; panel closed.
+    AISuggestForAsync(p.trigger, p.phrase, AICollectVocab(), _Done)
+
+    _Done(s, err) {
+        global wv2Core
+        if !IsObject(wv2Core)
+            return
+        if (err != "") {
+            wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(Map("error", err, "live", p.live)) ")")
+            return
+        }
+        s := _AISanitizeLang(s)
+        result := Map(
+            "id",      p.id,
+            "live",    p.live,
+            "seq",     p.seq,
+            "cat",     s.Has("category") ? s["category"] : "",
+            "tags",    s.Has("tags")     ? ArrJoin(s["tags"], ",") : "",
+            "comment", s.Has("comment")  ? s["comment"]  : "",
+            "lang",    s.Has("lang")     ? s["lang"]      : "")
+        wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(result) ")")
+        ; Refresh usage display after the call
+        wv2Core.ExecuteScriptAsync("window.updateAiUsage && window.updateAiUsage(" JSON.Dump(AIUsageText()) ")")
     }
-    result := Map(
-        "id",      p.id,
-        "live",    p.live,
-        "seq",     p.seq,
-        "cat",     s.Has("category") ? s["category"] : "",
-        "tags",    s.Has("tags")     ? ArrJoin(s["tags"], ",") : "",
-        "comment", s.Has("comment")  ? s["comment"]  : "",
-        "lang",    s.Has("lang")     ? s["lang"]      : "")
-    wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(result) ")")
-    ; Refresh usage display after the call
-    wv2Core.ExecuteScriptAsync("window.updateAiUsage && window.updateAiUsage(" JSON.Dump(AIUsageText()) ")")
 }
 
 ; ── Auto-fill metadata for a just-saved NEW phrase (quick-add AI checkbox) ────
@@ -459,10 +566,25 @@ _AIAutoFillNew(filepath, trigger) {
     if (Trim(hs.category) != "" && IsObject(hs.tags) && hs.tags.Length
         && Trim(hs.comment) != "" && Trim(hs.language) != "")
         return
-    try
-        s := _AISanitizeLang(AISuggestFor(hs.short, Unescape_CC(hs.long), AICollectVocab()))
-    catch
-        return
+    ; Asynchronous: by now the phrase is already inserted and the previous
+    ; window has focus; the model answers in the background and the metadata
+    ; is written when it arrives, without freezing hotstrings meanwhile.
+    AISuggestForAsync(hs.short, Unescape_CC(hs.long), AICollectVocab(), _Done)
+
+    _Done(s, err) {
+        if (err != "")
+            return
+        ; The list may have been rebuilt while we waited: merge into the CURRENT
+        ; object for this id, not the one captured before the request.
+        hs := FindHsById(filepath "|" trigger)
+        if !IsObject(hs)
+            return
+        _AIApplyAutoFill(hs, _AISanitizeLang(s))
+    }
+}
+
+_AIApplyAutoFill(hs, s) {
+    global wv2Core
     ändrad := false
     if (Trim(hs.category) = "" && s.Has("category") && s["category"] != "") {
         hs.category := s["category"]
