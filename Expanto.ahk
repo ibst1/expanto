@@ -300,7 +300,7 @@ OnTrayClick(wParam, lParam, *) {
 
 ShowWv2Win() {
     global wv2Win, wv2Ctrl, g_wv2Shown
-    (wv2Win.Show(), Wv2Ensure())
+    Wv2Show()
     g_wv2Shown := true
     ; When the window was hidden at startup (StartMinimized), WebView2 may have
     ; deferred rendering. Fill() re-syncs bounds and wakes up the renderer.
@@ -332,9 +332,15 @@ global wv2Win := Gui("+Resize +MinSize600x400", "Expanto")
 wv2Win.OnEvent("Close", (*) => (wv2Win.Hide(), g_wv2Shown := false))
 wv2Win.OnEvent("Size",  OnWinResize)
 
-; Always show with a real size first — WebView2 needs a properly-sized, visible
-; window for Fill() to work. We hide it afterward if StartMinimized is set.
-wv2Win.Show("w1200 h720")
+; WebView2 needs a properly-sized, visible window for Fill() to work, so the
+; window is shown with a real size before the controller is created. With
+; StartMinimized neither happens: the window stays unshown and the WebView2 -
+; its half-dozen browser processes, some 250 MB - is created on the first
+; show (Wv2Show → Wv2Ensure), or never, if the window is never opened.
+global g_startMin := IniRead(inifile, "General", "StartMinimized", "0") != "0"
+global g_wv2Sized := !g_startMin   ; the window has been given its real size
+if !g_startMin
+    wv2Win.Show("w1200 h720")
 InitGuiHotkeys()
 
 ; Dark title bar
@@ -350,16 +356,19 @@ DllCall("dwmapi\DwmSetWindowAttribute", "ptr", wv2Win.hwnd, "uint", 20, "int*", 
 ; A browser profile belongs in LOCALAPPDATA, never in a synced OneDrive folder.
 global wv2DataDir := EnvGet("LOCALAPPDATA") "\Expanto\WebView2"
 try DirCreate(wv2DataDir)
-global wv2Ctrl := WebView2.create(
-    wv2Win.hwnd,          ; parent HWND
-    ,                     ; no callback → synchronous .await()
-    0,                    ; no pre-created environment
-    wv2DataDir,           ; own user data folder, never Edge's
-    "",                   ; auto-detect Edge runtime
-    0,                    ; no environment options
-    A_ScriptDir "\lib\WebView2Loader.dll"
-)
-wv2Ctrl.Fill()           ; size WebView2 to fill the window client area
+global wv2Ctrl := 0, wv2Core := 0   ; 0 until created - here, or on the first show
+if !g_startMin {
+    wv2Ctrl := WebView2.create(
+        wv2Win.hwnd,          ; parent HWND
+        ,                     ; no callback → synchronous .await()
+        0,                    ; no pre-created environment
+        wv2DataDir,           ; own user data folder, never Edge's
+        "",                   ; auto-detect Edge runtime
+        0,                    ; no environment options
+        A_ScriptDir "\lib\WebView2Loader.dll"
+    )
+    wv2Ctrl.Fill()           ; size WebView2 to fill the window client area
+}
 
 ; ── Set window icon + taskbar button icon ────────────────────────────────────
 _iconPath := A_ScriptDir "\app.ico"
@@ -370,22 +379,16 @@ SetWindowAppId(wv2Win.hwnd, "Expanto.Application.1", FileExist(_iconPath) ? _ico
 SetTimer(ApplyWindowIcon, -1000)  ; re-apply after 1 s when Chromium has fully settled
 
 
-global wv2Core := wv2Ctrl.CoreWebView2
-ApplyDictionaries()
-
-; ── Wire up events before navigating ─────────────────────────────────────────
-wv2Core.add_NavigationCompleted(OnNavigationCompleted)
-wv2Core.add_WebMessageReceived(OnWebMessageReceived)
-wv2Core.add_ProcessFailed(OnProcessFailed)
-
-; ── Navigate to local UI ──────────────────────────────────────────────────────
-wv2Core.Navigate("file:///" StrReplace(A_ScriptDir "\ui\index.html", "\", "/"))
-
-; ── Apply StartMinimized after WebView2 is fully set up ──────────────────────
-if IniRead(inifile, "General", "StartMinimized", "0") != "0" {
-    wv2Win.Hide()
-    g_wv2Shown := false
-}
+if !g_startMin {
+    wv2Core := wv2Ctrl.CoreWebView2
+    ApplyDictionaries()
+    ; events before navigating
+    wv2Core.add_NavigationCompleted(OnNavigationCompleted)
+    wv2Core.add_WebMessageReceived(OnWebMessageReceived)
+    wv2Core.add_ProcessFailed(OnProcessFailed)
+    wv2Core.Navigate("file:///" StrReplace(A_ScriptDir "\ui\index.html", "\", "/"))
+} else
+    g_wv2Shown := false   ; StartMinimized: the window was never shown
 
 ; ── Let the WebView2 go while the window stays hidden ────────────────────────
 ; Its half-dozen browser processes hold some 250 MB, which on a full machine
@@ -412,12 +415,26 @@ Wv2ReleaseCheck() {
     wv2Ctrl := 0
 }
 
-; The window is about to show: a released WebView2 is created again (the
-; page's NavigationCompleted then re-sends the data and re-arms the hotkey).
+; The window is about to show: a released - or, with StartMinimized, never
+; created - WebView2 is created (the page's NavigationCompleted then sends
+; the data and arms the hotkey).
 Wv2Ensure() {
     global wv2Ctrl
     if !IsObject(wv2Ctrl)
         ReinitWebView2()
+}
+
+; Every show goes through here: the first one gives the window its real
+; size (WebView2 needs a sized, visible window to fill), later ones keep
+; whatever size the user left it with; then the WebView2 is made sure of.
+Wv2Show() {
+    global wv2Win, g_wv2Sized
+    if !g_wv2Sized {
+        g_wv2Sized := true
+        wv2Win.Show("w1200 h720")
+    } else
+        wv2Win.Show()
+    Wv2Ensure()
 }
 
 ; ── Remember the last active non-Expanto window continuously, so a direct insert
@@ -5407,7 +5424,7 @@ ShowHideWv2Win(*) {
         ; Window hidden — show it and record where we came from
         try g_prevWinId := WinGetID("A")
         g_wv2Shown := true
-        (wv2Win.Show(), Wv2Ensure())
+        Wv2Show()
         WinWait("ahk_id " wv2Win.hwnd, , 1)
         try WinActivate("ahk_id " wv2Win.hwnd)
         if IsSet(wv2Core)
@@ -5973,7 +5990,7 @@ ExpandMarkedWord(*) {
         return
     }
     g_markWordActive := true
-    (wv2Win.Show(), Wv2Ensure())
+    Wv2Show()
     g_wv2Shown := true
     WinActivate("ahk_id " wv2Win.hwnd)
     ; Pump the message loop so any pending ProcessFailed event can fire and clear g_wv2Ready
