@@ -300,11 +300,11 @@ OnTrayClick(wParam, lParam, *) {
 
 ShowWv2Win() {
     global wv2Win, wv2Ctrl, g_wv2Shown
-    wv2Win.Show()
+    (wv2Win.Show(), Wv2Ensure())
     g_wv2Shown := true
     ; When the window was hidden at startup (StartMinimized), WebView2 may have
     ; deferred rendering. Fill() re-syncs bounds and wakes up the renderer.
-    if IsSet(wv2Ctrl)
+    if IsObject(wv2Ctrl)
         wv2Ctrl.Fill()
 }
 
@@ -387,6 +387,39 @@ if IniRead(inifile, "General", "StartMinimized", "0") != "0" {
     g_wv2Shown := false
 }
 
+; ── Let the WebView2 go while the window stays hidden ────────────────────────
+; Its half-dozen browser processes hold some 250 MB, which on a full machine
+; is paging. Ten minutes after the window was last visible the controller is
+; closed (the Gui window stays - it is referred to everywhere); every Show
+; goes through Wv2Ensure, which creates it again on the existing window.
+WV2_RELEASE_MS := 600000
+SetTimer(Wv2ReleaseCheck, 30000)
+
+Wv2ReleaseCheck() {
+    global wv2Win, wv2Ctrl, wv2Core, g_wv2Ready, g_hkMarkWord
+    static lastShown := A_TickCount
+    if DllCall("IsWindowVisible", "ptr", wv2Win.hwnd) {
+        lastShown := A_TickCount
+        return
+    }
+    if (!IsObject(wv2Ctrl) || A_TickCount - lastShown < WV2_RELEASE_MS)
+        return
+    g_wv2Ready := false
+    if (g_hkMarkWord != "")            ; as after a renderer crash: the layer needs the page
+        try Hotkey(g_hkMarkWord, "Off")
+    wv2Core := 0
+    try wv2Ctrl.Close()
+    wv2Ctrl := 0
+}
+
+; The window is about to show: a released WebView2 is created again (the
+; page's NavigationCompleted then re-sends the data and re-arms the hotkey).
+Wv2Ensure() {
+    global wv2Ctrl
+    if !IsObject(wv2Ctrl)
+        ReinitWebView2()
+}
+
 ; ── Remember the last active non-Expanto window continuously, so a direct insert
 ;    (e.g. double-clicking a phrase) can return focus to it even when Expanto was
 ;    reached by Alt-Tab / clicking rather than via its hotkey. ──────────────────
@@ -466,7 +499,7 @@ SetWindowAppId(hwnd, appId, iconPath := "") {
 
 OnWinResize(g, minMax, w, h) {
     global wv2Ctrl
-    if (minMax = -1 || !IsSet(wv2Ctrl))
+    if (minMax = -1 || !IsObject(wv2Ctrl))
         return
     wv2Ctrl.Fill()
 }
@@ -5374,7 +5407,7 @@ ShowHideWv2Win(*) {
         ; Window hidden — show it and record where we came from
         try g_prevWinId := WinGetID("A")
         g_wv2Shown := true
-        wv2Win.Show()
+        (wv2Win.Show(), Wv2Ensure())
         WinWait("ahk_id " wv2Win.hwnd, , 1)
         try WinActivate("ahk_id " wv2Win.hwnd)
         if IsSet(wv2Core)
@@ -5940,7 +5973,7 @@ ExpandMarkedWord(*) {
         return
     }
     g_markWordActive := true
-    wv2Win.Show()
+    (wv2Win.Show(), Wv2Ensure())
     g_wv2Shown := true
     WinActivate("ahk_id " wv2Win.hwnd)
     ; Pump the message loop so any pending ProcessFailed event can fire and clear g_wv2Ready
