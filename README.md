@@ -175,7 +175,7 @@ Right-clicking in the sidebar or phrase list opens a context menu. The menu is *
 | — | **Decrypt (.enc → .ahk)** — decrypt the file in place |
 | — | **Hide file / Show file** |
 
-**Multi-file selection:** with two or more files selected, **Preset settings** and **Detailed settings** apply to all of them at once.
+**Multi-file selection:** with two or more files selected, **Preset settings**, **Detailed settings** and **Hide file / Show file** apply to all of them at once (the menu then reads *Hide N files* / *Show N files*).
 
 ### Folder menu
 

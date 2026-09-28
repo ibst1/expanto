@@ -1172,15 +1172,22 @@ OnWebMessageReceived(sender, args) {
         }
 
     } else if (action = "setFileHidden") {
-        path   := msg.Has("path")   ? msg["path"]   : ""
+        ; "paths" carries the whole file selection; "path" is the older single-file form
+        paths  := msg.Has("paths") ? msg["paths"] : (msg.Has("path") && msg["path"] != "" ? [msg["path"]] : [])
         hidden := msg.Has("hidden") && msg["hidden"] ? "1" : ""
-        if FileExist(path) {
+        done := []
+        for path in paths {
+            if !FileExist(path)
+                continue
             s := ReadFileSettings(path)
             s["hidden"] := hidden
             WriteFileSettings(path, s)
+            done.Push(path)
+        }
+        if (done.Length > 0) {
             ; showing a file inside a hidden folder lifts the folder but keeps
             ; the folder's other files hidden
-            foldersChanged := (hidden = "") ? PromoteFilesOutOfHiddenFolder([path]) : false
+            foldersChanged := (hidden = "") ? PromoteFilesOutOfHiddenFolder(done) : false
             _SafeSend(sender,"window.receiveFiles(" BuildFilesJson() ")")
             if foldersChanged
                 _SafeSend(sender,"window.receiveSettings(" BuildSettingsJson() ")")

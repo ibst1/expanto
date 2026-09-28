@@ -310,6 +310,7 @@ const LANG = {
     'ctx.enableHintT': 'Aktivera trigger-popup', 'ctx.disableHintT': 'Avaktivera trigger-popup',
     'ctx.enableHintP': 'Aktivera fras-popup', 'ctx.disableHintP': 'Avaktivera fras-popup',
     'ctx.hideFile': 'Dölj fil', 'ctx.showFile': 'Visa fil',
+    'ctx.hideFiles': n => `Dölj ${n} filer`, 'ctx.showFiles': n => `Visa ${n} filer`,
     'ctx.openFolder': 'Öppna mapp i Utforskaren',
     'ctx.hideFolder': 'Dölj mapp', 'ctx.showFolder': 'Visa mapp',
     'ctx.preset.spellcheck': 'Ordlista / autokorrigering',
@@ -765,6 +766,7 @@ const LANG = {
     'ctx.enableHintT': 'Enable trigger popup', 'ctx.disableHintT': 'Disable trigger popup',
     'ctx.enableHintP': 'Enable phrase popup', 'ctx.disableHintP': 'Disable phrase popup',
     'ctx.hideFile': 'Hide file', 'ctx.showFile': 'Show file',
+    'ctx.hideFiles': n => `Hide ${n} files`, 'ctx.showFiles': n => `Show ${n} files`,
     'ctx.openFolder': 'Open folder in Explorer',
     'ctx.hideFolder': 'Hide folder', 'ctx.showFolder': 'Show folder',
     'ctx.preset.spellcheck': 'Word list / autocorrect',
@@ -2723,11 +2725,8 @@ function bindUI() {
     } else if (item.classList.contains('ctx-new-file')) {
       closeContextMenu();
       openNewFileDialog(item.dataset.folder);
-    } else if (action === 'hideFile') {
-      postToAhk({ action: 'setFileHidden', path: item.dataset.path, hidden: true });
-      closeContextMenu();
-    } else if (action === 'showFile') {
-      postToAhk({ action: 'setFileHidden', path: item.dataset.path, hidden: false });
+    } else if (action === 'hideFile' || action === 'showFile') {
+      postToAhk({ action: 'setFileHidden', paths: _ctxPresetPaths, hidden: action === 'hideFile' });
       closeContextMenu();
     } else if (action === 'hideFolder') {
       postToAhk({ action: 'setFolderHidden', id: item.dataset.folderid, hidden: true });
@@ -6005,9 +6004,12 @@ function showFileContextMenu(e, path, s) {
   // If the right-clicked file is part of a multi-file selection, apply to all selected files
   _ctxPresetPaths = g_selFiles.size > 1 && g_selFiles.has(path) ? [...g_selFiles] : [path];
   const menu = document.getElementById('ctxMenu');
+  // Show/hide applies to every selected file (like the presets and the
+  // details submenu); the label says so when more than one is affected.
+  const n = _ctxPresetPaths.length;
   const hideAction = s.isHidden
-    ? `<div class="ctx-item" data-action="showFile" data-path="${escHtml(path)}">${T('ctx.showFile')}</div>`
-    : `<div class="ctx-item" data-action="hideFile" data-path="${escHtml(path)}">${T('ctx.hideFile')}</div>`;
+    ? `<div class="ctx-item" data-action="showFile">${n > 1 ? T('ctx.showFiles', n) : T('ctx.showFile')}</div>`
+    : `<div class="ctx-item" data-action="hideFile">${n > 1 ? T('ctx.hideFiles', n) : T('ctx.hideFile')}</div>`;
   const folderPath = (g_files.find(f => f.path === path)?.folderPath) || '';
   const isEnc = path.toLowerCase().endsWith('.enc');
   const openInEditor = !isEnc
