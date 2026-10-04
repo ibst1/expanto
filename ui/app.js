@@ -313,6 +313,8 @@ const LANG = {
     'ctx.hideFiles': n => `Dölj ${n} filer`, 'ctx.showFiles': n => `Visa ${n} filer`,
     'ctx.openFolder': 'Öppna mapp i Utforskaren',
     'ctx.hideFolder': 'Dölj mapp', 'ctx.showFolder': 'Visa mapp',
+    'ctx.expand': 'Expandera', 'ctx.collapse': 'Kollapsa',
+    'ctx.expandAll': 'Expandera alla undermappar', 'ctx.collapseSub': 'Kollapsa alla undermappar',
     'ctx.preset.spellcheck': 'Ordlista / autokorrigering',
     'ctx.preset.abbrev': 'Förkortningar',
     'ctx.preset.phrases': 'Fraser',
@@ -769,6 +771,8 @@ const LANG = {
     'ctx.hideFiles': n => `Hide ${n} files`, 'ctx.showFiles': n => `Show ${n} files`,
     'ctx.openFolder': 'Open folder in Explorer',
     'ctx.hideFolder': 'Hide folder', 'ctx.showFolder': 'Show folder',
+    'ctx.expand': 'Expand', 'ctx.collapse': 'Collapse',
+    'ctx.expandAll': 'Expand all subfolders', 'ctx.collapseSub': 'Collapse all subfolders',
     'ctx.preset.spellcheck': 'Word list / autocorrect',
     'ctx.preset.abbrev': 'Abbreviations',
     'ctx.preset.phrases': 'Phrases',
@@ -1284,6 +1288,9 @@ let g_showHiddenFiles = false;
 // "· dold"); the toggle state persists across sessions.
 let g_showHiddenInNewFile = (localStorage.getItem('expShowHiddenInPicker') ?? '1') === '1';
 let g_newFileSelected     = '';      // last real file chosen in #fNewFile (survives the show/hide toggle)
+// Who set the new phrase's target file: 'default' (preselected), 'user' (picked
+// it — the AI leaves it alone) or 'ai' (the live suggestion chose it).
+let g_newFileBy           = 'default';
 let g_collapsedFolders = new Set(
   (() => { try { return JSON.parse(localStorage.getItem('collapsedFolders') || '[]'); } catch(_){ return []; } })()
 );
@@ -1386,6 +1393,7 @@ function setNewFile(path, silent) {
     }
   }
   input.value = path || '';
+  if (!silent) g_newFileBy = 'user';
   if (path) g_newFileSelected = path;
   if (path && !silent) localStorage.setItem('expLastNewFile', path);
   const disp = document.getElementById('fNewFileBtn');
@@ -1406,7 +1414,7 @@ function _updateAiAutoRow(path) {
   const row = document.getElementById('aiAutoRow');
   const cb  = document.getElementById('fAiAuto');
   if (!row || !cb) return;
-  const enc = (path || '').toLowerCase().endsWith('.enc');
+  const enc = (path || '').toLowerCase().endsWith('.enc') && g_newFileBy !== 'ai';
   cb.disabled = enc;
   row.classList.toggle('ai-auto-disabled', enc);
   row.title = enc ? T('newfile.aiAuto.enc') : T('newfile.aiAuto.tip');
@@ -1652,6 +1660,16 @@ window.receiveAiSuggestion = function(s) {
     _setAiAutoBusy(false);
     // Stale or out-of-context: user kept typing, closed the panel or left new mode
     if (s.error || !g_newPhraseMode || (s.seq && s.seq !== _aiLiveSeq)) return;
+    const cur = document.getElementById('fNewFile')?.value || '';
+    if (s.file && s.file !== cur && g_newFileBy !== 'user' && g_files.some(f => f.path === s.file)) {
+      g_newFileBy = 'ai';
+      setNewFile(s.file, true);
+      // the new file's defaults, without clobbering a category typed by hand
+      const cat = document.getElementById('fCat');
+      const keep = cat && cat.dataset.aiSrc === 'user' ? cat.value : null;
+      _applyFileDefaults(s.file);
+      if (keep !== null) cat.value = keep;
+    }
   } else if (s.error) { alert('AI: ' + s.error); return; }
   // live mode never overwrites what the user typed by hand (aiSrc === 'user');
   // file defaults and earlier AI fills are fair game
@@ -2100,7 +2118,13 @@ window.receiveMarkedWord = function(word) {
   if (trigger) trigger.value = word;
   if (phrase)  phrase.value  = word;
   if (trim)    trim.checked  = true;
-  if (phrase)  phrase.focus();
+  if (phrase) {
+    phrase.focus();
+    // The host hands keyboard focus to the WebView2 around this call, and on a
+    // fresh page load init work queued right after may move focus too — put it
+    // back on the phrase field once that has run.
+    setTimeout(() => { if (g_newPhraseMode && document.activeElement !== phrase) phrase.focus(); }, 150);
+  }
 };
 
 window.openForSearch = function() {
@@ -2734,6 +2758,19 @@ function bindUI() {
     } else if (action === 'showFolder') {
       postToAhk({ action: 'setFolderHidden', id: item.dataset.folderid, hidden: false });
       closeContextMenu();
+    } else if ((action === 'toggleCollapse' || action === 'expandAll' || action === 'collapseSub') && _ctxCollapse) {
+      const { key, keys } = _ctxCollapse;
+      if (action === 'toggleCollapse') {
+        if (g_collapsedFolders.has(key)) g_collapsedFolders.delete(key);
+        else g_collapsedFolders.add(key);
+      } else {
+        // Both leave the folder itself open; they differ in its subfolders.
+        g_collapsedFolders.delete(key);
+        keys.forEach(k => action === 'expandAll' ? g_collapsedFolders.delete(k) : g_collapsedFolders.add(k));
+      }
+      _saveCollapsedFolders();
+      closeContextMenu();
+      populateSidebar();
     } else if (action === 'openEditor') {
       postToAhk({ action: 'openEditor', path: item.dataset.path });
       closeContextMenu();
@@ -3077,6 +3114,8 @@ function renderFileFilterList(counts) {
   }
 
   const multiFolder = folderOrder.length > 1;
+  // Each nesting level indents 10px; level 0 = the list's own 8px padding.
+  const indentPx = level => (8 + 10 * level) + 'px';
 
   for (const fid of folderOrder) {
     const isFolderHidden = g_hiddenFolderIds.has(fid);
@@ -3085,6 +3124,25 @@ function renderFileFilterList(counts) {
     const paths = folderFiles[fid];
     const folderTotal = paths.reduce((s, p) => s + (visibleCounts[p] || 0), 0);
     const isCollapsed = g_collapsedFolders.has(fid);
+
+    // Build a subfolder tree from each file's path relative to the folder root,
+    // so files in subfolders are listed under their own (nested) headers.
+    const root = { rel: '', files: [], kids: new Map() };
+    const base = (folderPaths[fid] || '').replace(/[\\/]+$/, '');
+    const baseLc = base.toLowerCase();
+    for (const p of paths) {
+      const rel = (base && p.toLowerCase().startsWith(baseLc + '\\')) ? p.slice(base.length + 1) : '';
+      const dirs = rel.split(/[\\/]/).slice(0, -1);
+      let node = root;
+      for (const d of dirs) {
+        if (!node.kids.has(d)) node.kids.set(d, { name: d, rel: node.rel ? node.rel + '\\' + d : d, files: [], kids: new Map() });
+        node = node.kids.get(d);
+      }
+      node.files.push(p);
+    }
+    const subtreeFiles = n => [...n.files, ...[...n.kids.values()].flatMap(subtreeFiles)];
+    // Collapse keys of every subfolder below n (not n itself).
+    const subtreeKeys = n => [...n.kids.values()].flatMap(k => [fid + '|' + k.rel, ...subtreeKeys(k)]);
 
     if (multiFolder) {
       const hdr = document.createElement('li');
@@ -3123,21 +3181,72 @@ function renderFileFilterList(counts) {
       });
       hdr.addEventListener('contextmenu', e => {
         e.preventDefault();
-        showFolderContextMenu(e, folderPaths[fid], fid);
+        showFolderContextMenu(e, folderPaths[fid], fid, null, { key: fid, keys: subtreeKeys(root) });
       });
       ul.appendChild(hdr);
     }
 
     if (isCollapsed) continue;
 
-    paths.slice().sort((a,b) => (visibleCounts[b]||0) - (visibleCounts[a]||0)).forEach(path => {
+    const renderNode = (node, level) => {
+      [...node.kids.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
+        .forEach(kid => {
+          const key = fid + '|' + kid.rel;
+          const kidPaths = subtreeFiles(kid);
+          const kidTotal = kidPaths.reduce((s, p) => s + (visibleCounts[p] || 0), 0);
+          const kidCollapsed = g_collapsedFolders.has(key);
+          const kidAllSel = kidPaths.length > 0 && kidPaths.every(p => g_selFiles.has(p));
+          const hdr = document.createElement('li');
+          hdr.className = 'folder-group-hdr subfolder-hdr'
+            + (kidCollapsed ? ' collapsed' : '')
+            + (kidAllSel    ? ' folder-selected' : '');
+          hdr.style.paddingLeft = indentPx(level);
+          const sHs = _flhState(kidPaths, 'hs'), sT = _flhState(kidPaths, 'hintT'), sP = _flhState(kidPaths, 'hintP');
+          hdr.innerHTML =
+            `<span class="fgh-arrow">${kidCollapsed ? '▸' : '▾'}</span>` +
+            `<span class="fgh-name" title="${escHtml(kid.rel)}">${escHtml(kid.name)}</span>` +
+            `<span class="li-count">${kidTotal}</span>` +
+            useBadgeHtml({ hsOn: sHs, hintTOn: sT, hintPOn: sP });
+          hdr.addEventListener('click', e => {
+            const badge = e.target.closest('[data-usebadge]');
+            if (badge) {
+              e.stopPropagation();
+              showUsedForMenu(badge, kidPaths, { hsOn: sHs, hintTOn: sT, hintPOn: sP });
+              return;
+            }
+            if (e.target.closest('.fgh-arrow')) {
+              if (g_collapsedFolders.has(key)) g_collapsedFolders.delete(key);
+              else g_collapsedFolders.add(key);
+              try { localStorage.setItem('collapsedFolders', JSON.stringify([...g_collapsedFolders])); } catch(_){}
+              populateSidebar();
+              return;
+            }
+            const allSel = kidPaths.length > 0 && kidPaths.every(p => g_selFiles.has(p));
+            if (allSel) kidPaths.forEach(p => g_selFiles.delete(p));
+            else        kidPaths.forEach(p => g_selFiles.add(p));
+            populateSidebar();
+            applyFilter();
+          });
+          hdr.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            showFolderContextMenu(e, base + '\\' + kid.rel, null, kidPaths, { key, keys: subtreeKeys(kid) });
+          });
+          ul.appendChild(hdr);
+          if (!kidCollapsed) renderNode(kid, level + 1);
+        });
+      node.files.slice().sort((a,b) => (visibleCounts[b]||0) - (visibleCounts[a]||0))
+        .forEach(path => renderFile(path, level));
+    };
+
+    const renderFile = (path, level) => {
       const cnt = visibleCounts[path] || 0;
       const li = document.createElement('li');
       const cached = g_fileSettingsCache[path];
       const isHidden = !!cached?.hidden;
       const isLocked = path.toLowerCase().endsWith('.enc') && !g_encUnlocked;
+      if (level > 0) li.style.paddingLeft = indentPx(level);
       li.className = 'file-item'
-        + (multiFolder ? ' folder-child' : '')
         + (g_selFiles.has(path) ? ' selected' : '')
         + (isHidden ? ' file-hidden' : '')
         + (isLocked ? ' file-enc-locked' : '');
@@ -3191,7 +3300,9 @@ function renderFileFilterList(counts) {
         });
       }
       ul.appendChild(li);
-    });
+    };
+
+    renderNode(root, multiFolder ? 1 : 0);
   }
 
 }
@@ -4435,6 +4546,7 @@ function openNewPhrase() {
   const only   = g_selFiles.size === 1 ? [...g_selFiles][0] : null;
   const last   = localStorage.getItem('expLastNewFile');
   const preselect = (exists(only) && only) || (exists(last) && last) || null;
+  g_newFileBy = 'default';
   setNewFile(preselect || _defaultNewFilePath(), true);   // sets #fNewFile value + button label
   const chosen = document.getElementById('fNewFile').value;
 
@@ -4547,8 +4659,9 @@ function _aiLiveFire() {
   if (!g_newPhraseMode || !g_aiEnabled) return;
   const cb = document.getElementById('fAiAuto');
   if (!cb || !cb.checked || cb.disabled) return;
-  const file = document.getElementById('fNewFile')?.value || '';
-  if (!file || file.toLowerCase().endsWith('.enc')) return;
+  const byAi = g_newFileBy === 'ai';
+  const file = byAi ? '' : (document.getElementById('fNewFile')?.value || '');
+  if (file.toLowerCase().endsWith('.enc')) return;
   const trigger = document.getElementById('fTrigger')?.value.trim() || '';
   const phrase  = document.getElementById('fPhrase')?.value.trim() || '';
   if (phrase.length < 3) return;
@@ -4557,7 +4670,8 @@ function _aiLiveFire() {
   _aiLiveLastSent = key;
   _aiLiveSeq++;
   _setAiAutoBusy(true);
-  postToAhk({ action: 'aiSuggest', id: '', trigger, phrase, file, live: 1, seq: _aiLiveSeq });
+  postToAhk({ action: 'aiSuggest', id: '', trigger, phrase, file, live: 1, seq: _aiLiveSeq,
+              pickFile: g_newFileBy !== 'user' ? 1 : 0 });
 }
 
 function isEncFile(f) {
@@ -4727,6 +4841,7 @@ function openCopyToForm(sourceId, targetFile, isMove) {
   // Override target file
   if (targetFile) {
     setNewFile(targetFile, true);   // target may be a hidden file — picker keeps it selectable
+    g_newFileBy = 'user';           // an explicit "copy/move to" target
     _applyFileDefaults(targetFile);
     updateNewPhraseSuggestions(targetFile);
     renderCustomFieldInputs(targetFile, p.customFields || {});
@@ -5956,6 +6071,16 @@ function openNewFileDialog(preselectedFolder) {
       opt.textContent = f.path.split(/[\\/]/).pop() || f.path;
       sel.appendChild(opt);
     });
+    // A subfolder (from a subfolder header's menu) isn't a configured folder — add it.
+    if (preselectedFolder && ![...sel.options].some(o => o.value === preselectedFolder)) {
+      const owner = enabledFolders.find(f => preselectedFolder.toLowerCase().startsWith(f.path.replace(/[\\/]+$/, '').toLowerCase() + '\\'));
+      const opt = document.createElement('option');
+      opt.value = preselectedFolder;
+      opt.textContent = owner
+        ? (owner.path.split(/[\\/]/).pop() || owner.path) + preselectedFolder.slice(owner.path.replace(/[\\/]+$/, '').length)
+        : preselectedFolder;
+      sel.appendChild(opt);
+    }
     if (preselectedFolder) sel.value = preselectedFolder;
   }
   document.getElementById('nfName').value = '';
@@ -6055,8 +6180,27 @@ function showFileContextMenu(e, path, s) {
   menu.style.top  = Math.max(0, Math.min(e.clientY, window.innerHeight - mh - 4)) + 'px';
 }
 
-function showFolderContextMenu(e, folderPath, folderId) {
-  _ctxPresetPaths = folderId
+// subPaths: for a subfolder header — the files in that subtree (no hide toggle,
+// since hiding works per configured folder).
+// collapse: { key, keys } — this header's collapse key and those of all its
+// subfolders, for the expand/collapse items.
+let _ctxCollapse = null;
+function _saveCollapsedFolders() {
+  try { localStorage.setItem('collapsedFolders', JSON.stringify([...g_collapsedFolders])); } catch(_){}
+}
+function showFolderContextMenu(e, folderPath, folderId, subPaths, collapse) {
+  _ctxCollapse = collapse || null;
+  const collapseItems = collapse
+    ? `<div class="ctx-item" data-action="toggleCollapse">${T(g_collapsedFolders.has(collapse.key) ? 'ctx.expand' : 'ctx.collapse')}</div>` +
+      (collapse.keys.length
+        ? `<div class="ctx-item" data-action="expandAll">${T('ctx.expandAll')}</div>` +
+          `<div class="ctx-item" data-action="collapseSub">${T('ctx.collapseSub')}</div>`
+        : '') +
+      `<div class="ctx-sep"></div>`
+    : '';
+  _ctxPresetPaths = subPaths
+    ? subPaths.slice()
+    : folderId
     ? g_files.filter(f => f.folder === folderId).map(f => f.path)
     : g_files.map(f => f.path);
   const menu = document.getElementById('ctxMenu');
@@ -6068,7 +6212,7 @@ function showFolderContextMenu(e, folderPath, folderId) {
     ? `<div class="ctx-item" data-action="openFolder" data-path="${escHtml(folderPath)}">${T('ctx.openFolder')}</div>`
     : '';
   const presetItems = `<div class="ctx-sep"></div>` + _presetItems();
-  menu.innerHTML = openFolderItem + toggleItem +
+  menu.innerHTML = collapseItems + openFolderItem + toggleItem +
     (openFolderItem || toggleItem ? `<div class="ctx-sep"></div>` : '') +
     `<div class="ctx-item ctx-new-file" data-folder="${escHtml(folderPath)}">${T('ctx.newFile')}</div>` +
     presetItems;

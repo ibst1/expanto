@@ -1552,7 +1552,7 @@ textarea.field-input { min-height: 80px; }
 .fgh-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .folder-group-hdr.folder-selected { color: var(--accent2); background: var(--bg-hover); }
 .folder-group-hdr.folder-selected .fgh-name { font-weight: 700; }
-.file-item.folder-child { padding-left: 18px; }
+.folder-group-hdr.subfolder-hdr { margin-top: 0; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
 /* ── File hidden / enc-locked indicator in list ── */
 .file-item.file-hidden { opacity: .45; font-style: italic; }

@@ -21,12 +21,17 @@ OnError(_LogError)
 ; Log next to the script only when that is a private place. These folders are
 ; synced with OneDrive across two machines, and a shared error.log interleaves
 ; lines from both - which actively misled a debugging session: the newest
-; entries had come from the OTHER computer. Per-machine, in LOCALAPPDATA.
+; entries had come from the OTHER computer. Per-machine, next to settings.ini.
+; Not LOCALAPPDATA: under the Store edition of AutoHotkey (an MSIX package)
+; writes there are silently redirected to
+; %LOCALAPPDATA%\Packages\<AutoHotkey package>\LocalCache\Local, so the log
+; could not be found where it was supposed to be. Roaming AppData is not
+; redirected (settings.ini already lives there).
 Felloggen() {
     static sökväg := ""
     if (sökväg != "")
         return sökväg
-    mapp := EnvGet("LOCALAPPDATA") "\Expanto"
+    mapp := A_AppData "\Expanto"
     try DirCreate(mapp)
     return sökväg := mapp "\error.log"
 }
@@ -86,6 +91,9 @@ global g_hkOpenGui       := ""   ; currently registered OpenGui hotkey string
 global g_hkUndo          := ""   ; currently registered Undo hotkey string
 global g_hkMarkWord      := ""
 global g_markWordActive  := false  ; true while stepping backward with MarkWord hotkey
+global g_pendingMarkWord := ""     ; marked word waiting for the page to load (WebView2 released / not yet created)
+global g_pendingMarkTick := 0
+global g_webMsgQueue     := []     ; page messages waiting to be handled outside the WebView2 callback
 global g_wv2Ready        := false  ; set true on NavigationCompleted, false on ProcessFailed
 global g_hkLastFired     := ""
 global g_hkInsert        := ""   ; global hotkey: insert selected phrase
@@ -395,8 +403,13 @@ if !g_startMin {
 ; is paging. Ten minutes after the window was last visible the controller is
 ; closed (the Gui window stays - it is referred to everywhere); every Show
 ; goes through Wv2Ensure, which creates it again on the existing window.
+; DISABLED: closing and re-creating the controller left a stale WebView2
+; wrapper whose __Delete hit freed memory ("Invalid memory read/write" at
+; WebView2.ahk:185) and took the whole script down - four times in two days,
+; none before this was added. The WebView2 now lives as long as the script;
+; Wv2Ensure still creates it lazily for StartMinimized.
 WV2_RELEASE_MS := 600000
-SetTimer(Wv2ReleaseCheck, 30000)
+; SetTimer(Wv2ReleaseCheck, 30000)
 
 Wv2ReleaseCheck() {
     global wv2Win, wv2Ctrl, wv2Core, g_wv2Ready, g_hkMarkWord
@@ -435,6 +448,17 @@ Wv2Show() {
     } else
         wv2Win.Show()
     Wv2Ensure()
+    Wv2Focus()
+}
+
+; Showing/activating the window leaves keyboard focus on the Gui window, not on
+; the WebView2 inside it: the page's focus() calls and its Alt+letter field
+; shortcuts then do nothing until the user clicks into the page. Hand the
+; keyboard focus to the WebView2 explicitly.
+Wv2Focus() {
+    global wv2Ctrl
+    if (IsSet(wv2Ctrl) && IsObject(wv2Ctrl))
+        try wv2Ctrl.MoveFocus(0)   ; COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC
 }
 
 ; ── Remember the last active non-Expanto window continuously, so a direct insert
@@ -522,7 +546,7 @@ OnWinResize(g, minMax, w, h) {
 }
 
 OnNavigationCompleted(sender, args) {
-    global g_wv2Ready, g_hkMarkWord, g_firstRun
+    global g_wv2Ready, g_hkMarkWord, g_firstRun, g_pendingMarkWord, g_pendingMarkTick
     g_wv2Ready := true
     if (g_hkMarkWord != "")
         try Hotkey(g_hkMarkWord, "On")
@@ -535,6 +559,15 @@ OnNavigationCompleted(sender, args) {
     _SafeSend(sender,"window.receiveDynamicSettings(" BuildDynamicSettingsJson() ")")
     if (g_firstRun)
         _SafeSend(sender, "window.showFirstRun(" BuildFirstRunJson() ")")
+    ; A MarkWord press that had to (re)create the WebView2 left its word here -
+    ; deliver it now that the page exists (only if it was just pressed).
+    if (g_pendingMarkWord != "") {
+        if (A_TickCount - g_pendingMarkTick < 30000) {
+            Wv2Focus()   ; the freshly created WebView2 has no keyboard focus yet
+            _SafeSend(sender, "window.receiveMarkedWord(" JSON.Dump(g_pendingMarkWord) ")")
+        }
+        g_pendingMarkWord := ""
+    }
     ApplyWindowIcon()
 }
 
@@ -569,11 +602,45 @@ ReinitWebView2() {
     }
 }
 
+; WebView2 event handlers must stay short: the actions below rewrite files,
+; re-register every hotstring and call back into the WebView2, and _SafeSend's
+; Sleep(0) pumps messages - a nested message loop inside the WebView2 callback,
+; which Microsoft warns against and which let further WebView2 events run
+; re-entrantly. "Fraser" (applyPreset) crashed the script that way
+; (2026-10-04, "Invalid memory read/write" with no script line). So the
+; callback only takes the message text and queues it; a timer handles the
+; queue in order, outside the callback.
 OnWebMessageReceived(sender, args) {
-    global g_ColCol, g_Semi, g_dictPaths, g_wv2Ready
+    global g_wv2Ready, g_webMsgQueue
     if (!g_wv2Ready)
         return
-    raw := args.WebMessageAsJson
+    try
+        raw := args.WebMessageAsJson
+    catch
+        return
+    g_webMsgQueue.Push(raw)
+    SetTimer(_DrainWebMessages, -1)
+}
+
+; A timer never interrupts itself, so a message that arrives while one is being
+; handled (e.g. during a Sleep) is only queued, and picked up by this loop.
+_DrainWebMessages() {
+    global g_webMsgQueue, g_wv2Ready, wv2Core
+    while g_webMsgQueue.Length {
+        raw := g_webMsgQueue.RemoveAt(1)
+        if (!g_wv2Ready || !IsSet(wv2Core) || !IsObject(wv2Core)) {
+            g_webMsgQueue := []   ; the page is gone - its requests with it
+            return
+        }
+        try
+            _HandleWebMessage(wv2Core, raw)
+        catch as e
+            _LogError(e, "")      ; log it and go on with the rest of the queue
+    }
+}
+
+_HandleWebMessage(sender, raw) {
+    global g_ColCol, g_Semi, g_dictPaths, g_wv2Ready
     t0 := A_TickCount
     try
         msg := JSON.Load(raw)
@@ -5952,6 +6019,7 @@ _FlushUsage(*) {
 
 ExpandMarkedWord(*) {
     global wv2Win, wv2Core, g_wv2Shown, g_prevWinId, g_markWordActive, g_wv2Ready, g_encPromptActive
+    global g_pendingMarkWord, g_pendingMarkTick
     ; Guard: skip if a modal AHK dialog (e.g. password prompt) is open — prevents key injection
     ; into the dialog and avoids using wv2Core during pre-Reload teardown.
     if (g_encPromptActive) {
@@ -6000,10 +6068,16 @@ ExpandMarkedWord(*) {
     Wv2Show()
     g_wv2Shown := true
     WinActivate("ahk_id " wv2Win.hwnd)
+    Wv2Focus()
     ; Pump the message loop so any pending ProcessFailed event can fire and clear g_wv2Ready
     Sleep(5)
-    if (!g_wv2Ready)
+    if (!g_wv2Ready) {
+        ; The WebView2 was released (10 min hidden) or never created (StartMinimized):
+        ; Wv2Show has just started creating it, so hand the word to NavigationCompleted.
+        g_pendingMarkWord := word
+        g_pendingMarkTick := A_TickCount
         return
+    }
     safe := StrReplace(StrReplace(word, "\", "\\"), "`"", "\`"")
     try _SafeSend(wv2Core,"window.receiveMarkedWord(`"" safe "`")")
 }

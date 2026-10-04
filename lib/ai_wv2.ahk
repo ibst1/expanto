@@ -302,6 +302,21 @@ AICollectVocab() {
     return { cats: cats, tags: tags, files: files }
 }
 
+; The model answers with a bare file name (from AICollectVocab's list) - map it
+; back to the file's full path; "" when it named no known file.
+AIResolveFile(name) {
+    global HS_ALL
+    name := Trim(name)
+    if (name = "")
+        return ""
+    for hs in HS_ALL {
+        SplitPath(hs.filepath, &nm)
+        if (nm = name)
+            return hs.filepath
+    }
+    return ""
+}
+
 AINewSchema() {
     str := Map("type", "string")
     return Map(
@@ -415,7 +430,8 @@ WV2AIHandle(msg, sender) {
                phrase:  msg.Has("phrase")  ? msg["phrase"]   : "",
                file:    msg.Has("file")    ? msg["file"]     : "",
                live:    msg.Has("live")    ? msg["live"]     : 0,
-               seq:     msg.Has("seq")     ? msg["seq"]      : 0 }
+               seq:     msg.Has("seq")     ? msg["seq"]      : 0,
+               pickFile: msg.Has("pickFile") ? msg["pickFile"] : 0 }
         SetTimer(() => _AIDoSuggest(p), -1)
 
     } else if (action = "aiBatch") {
@@ -546,6 +562,8 @@ _AIDoSuggest(p) {
             "tags",    s.Has("tags")     ? ArrJoin(s["tags"], ",") : "",
             "comment", s.Has("comment")  ? s["comment"]  : "",
             "lang",    s.Has("lang")     ? s["lang"]      : "")
+        if (p.pickFile && s.Has("file"))
+            result["file"] := AIResolveFile(s["file"])
         wv2Core.ExecuteScriptAsync("window.receiveAiSuggestion(" JSON.Dump(result) ")")
         ; Refresh usage display after the call
         wv2Core.ExecuteScriptAsync("window.updateAiUsage && window.updateAiUsage(" JSON.Dump(AIUsageText()) ")")
