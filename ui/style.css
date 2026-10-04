@@ -1553,6 +1553,8 @@ textarea.field-input { min-height: 80px; }
 .folder-group-hdr.folder-selected { color: var(--accent2); background: var(--bg-hover); }
 .folder-group-hdr.folder-selected .fgh-name { font-weight: 700; }
 .folder-group-hdr.subfolder-hdr { margin-top: 0; font-size: 11px; text-transform: none; letter-spacing: 0; }
+/* lower-case badge letter = "partly on" — the header's uppercase must not hide it */
+.folder-group-hdr .use-badge { text-transform: none; }
 
 /* ── File hidden / enc-locked indicator in list ── */
 .file-item.file-hidden { opacity: .45; font-style: italic; }

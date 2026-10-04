@@ -35,7 +35,7 @@ const LANG = {
     'use.hs': 'Hotstrings (expandera vid skrivning)',
     'use.hintT': 'Trigger-popup',
     'use.hintP': 'Fras-popup',
-    'use.none': 'inget',
+    'use.none': 'inget', 'use.partly': 'delvis',
     'use.hs.tip': 'Filens fraser expanderar när du skriver deras trigger.\nAv = fraserna finns kvar men utlöses inte.',
     'use.hintT.tip': 'Filens triggers föreslås i popupen medan du skriver början av en trigger.',
     'use.hintP.tip': 'Filens frastexter föreslås i popupen när det du skriver finns i själva frasen.',
@@ -493,7 +493,7 @@ const LANG = {
     'use.hs': 'Hotstrings (expand while typing)',
     'use.hintT': 'Trigger popup',
     'use.hintP': 'Phrase popup',
-    'use.none': 'nothing',
+    'use.none': 'nothing', 'use.partly': 'partly',
     'use.hs.tip': 'The file\'s phrases expand when you type their trigger.\nOff = the phrases stay but never fire.',
     'use.hintT.tip': 'The file\'s triggers are suggested in the popup while you type the start of a trigger.',
     'use.hintP.tip': 'The file\'s phrase texts are suggested in the popup when what you type appears inside the phrase.',
@@ -3043,15 +3043,34 @@ function renderFilterList(elId, counts, selSet, onClick, isFiltered) {
   });
 }
 
+// true = on for every file, false = off for every file, 'mixed' = some of each
+// (shown as a small letter, so "off" never hides files that are still on).
 function _flhState(paths, type) {
   if (!paths.length) return true;
-  return paths.every(p => {
+  const isOn = p => {
     const s = g_fileSettingsMap[p];
     if (type === 'hs')    return s?.hsOn    !== false;
     if (type === 'hintT') return s?.hintTOn !== false;
     if (type === 'hintP') return s?.hintPOn !== false;
     return true;
-  });
+  };
+  const n = paths.filter(isOn).length;
+  return n === paths.length ? true : n === 0 ? false : 'mixed';
+}
+
+// Folder header click: select only this group's files — or, when exactly these
+// are already selected, clear the filter. Ctrl (add): toggle the group in/out
+// of the current selection.
+function _selectFileGroup(paths, add) {
+  const allSel = paths.length > 0 && paths.every(p => g_selFiles.has(p));
+  if (add) {
+    if (allSel) paths.forEach(p => g_selFiles.delete(p));
+    else        paths.forEach(p => g_selFiles.add(p));
+    return;
+  }
+  const exactly = allSel && g_selFiles.size === paths.length;
+  g_selFiles.clear();
+  if (!exactly) paths.forEach(p => g_selFiles.add(p));
 }
 
 function renderFileFilterList(counts) {
@@ -3073,7 +3092,15 @@ function renderFileFilterList(counts) {
     if ((!hidden && !folderHidden) || g_showHiddenFiles) visibleCounts[path] = cnt;
   }
   const total = Object.values(visibleCounts).reduce((a,b)=>a+b,0);
-  const globalPaths = Object.keys(visibleCounts);
+  // The H/T/P badges cover EVERY file of their group, hidden ones included:
+  // hidden files still expand and still feed the hint popup, so a badge that
+  // only saw the visible files read "off" while hidden autocorrect/abbreviation
+  // files kept filling the popup — and switching it off never reached them.
+  // Locked .enc files are left out (their settings cannot be read yet).
+  const usePaths = pred => g_files.map(f => f.path)
+    .filter(p => !(p.toLowerCase().endsWith('.enc') && !g_encUnlocked))
+    .filter(pred);
+  const globalPaths = usePaths(() => true);
   const allHs = _flhState(globalPaths, 'hs');
   const allHt = _flhState(globalPaths, 'hintT');
   const allHp = _flhState(globalPaths, 'hintP');
@@ -3087,9 +3114,7 @@ function renderFileFilterList(counts) {
     const badge = e.target.closest('[data-usebadge]');
     if (badge) {
       e.stopPropagation();
-      const paths = globalPaths
-        .filter(f => !(f.toLowerCase().endsWith('.enc') && !g_encUnlocked));
-      showUsedForMenu(badge, paths, { hsOn: allHs, hintTOn: allHt, hintPOn: allHp });
+      showUsedForMenu(badge, globalPaths, { hsOn: allHs, hintTOn: allHt, hintPOn: allHp });
       return;
     }
     g_selFiles.clear(); populateSidebar(); applyFilter();
@@ -3151,7 +3176,8 @@ function renderFileFilterList(counts) {
         + (isCollapsed    ? ' collapsed'     : '')
         + (isFolderHidden ? ' folder-hidden' : '')
         + (folderAllSel   ? ' folder-selected' : '');
-      const fHs = _flhState(paths, 'hs'), fT = _flhState(paths, 'hintT'), fP = _flhState(paths, 'hintP');
+      const fUse = usePaths(p => fileFolder[p] === fid);   // hidden files too — see usePaths
+      const fHs = _flhState(fUse, 'hs'), fT = _flhState(fUse, 'hintT'), fP = _flhState(fUse, 'hintP');
       hdr.innerHTML =
         `<span class="fgh-arrow">${isCollapsed ? '▸' : '▾'}</span>` +
         `<span class="fgh-name" title="${escHtml(folderLabel[fid])}">${escHtml(folderLabel[fid])}</span>` +
@@ -3161,7 +3187,7 @@ function renderFileFilterList(counts) {
         const badge = e.target.closest('[data-usebadge]');
         if (badge) {
           e.stopPropagation();
-          showUsedForMenu(badge, paths, { hsOn: fHs, hintTOn: fT, hintPOn: fP });
+          showUsedForMenu(badge, fUse, { hsOn: fHs, hintTOn: fT, hintPOn: fP });
           return;
         }
         if (e.target.closest('.fgh-arrow')) {
@@ -3172,10 +3198,8 @@ function renderFileFilterList(counts) {
           populateSidebar();
           return;
         }
-        // Clicking the folder name selects all its files (toggles the whole group).
-        const allSel = paths.length > 0 && paths.every(p => g_selFiles.has(p));
-        if (allSel) paths.forEach(p => g_selFiles.delete(p));
-        else        paths.forEach(p => g_selFiles.add(p));
+        // Clicking the folder name selects just its files; Ctrl+click adds/removes them.
+        _selectFileGroup(paths, e.ctrlKey);
         populateSidebar();
         applyFilter();
       });
@@ -3202,7 +3226,9 @@ function renderFileFilterList(counts) {
             + (kidCollapsed ? ' collapsed' : '')
             + (kidAllSel    ? ' folder-selected' : '');
           hdr.style.paddingLeft = indentPx(level);
-          const sHs = _flhState(kidPaths, 'hs'), sT = _flhState(kidPaths, 'hintT'), sP = _flhState(kidPaths, 'hintP');
+          const kidPrefix = (base + '\\' + kid.rel + '\\').toLowerCase();
+          const sUse = usePaths(p => fileFolder[p] === fid && p.toLowerCase().startsWith(kidPrefix));   // hidden files too
+          const sHs = _flhState(sUse, 'hs'), sT = _flhState(sUse, 'hintT'), sP = _flhState(sUse, 'hintP');
           hdr.innerHTML =
             `<span class="fgh-arrow">${kidCollapsed ? '▸' : '▾'}</span>` +
             `<span class="fgh-name" title="${escHtml(kid.rel)}">${escHtml(kid.name)}</span>` +
@@ -3212,7 +3238,7 @@ function renderFileFilterList(counts) {
             const badge = e.target.closest('[data-usebadge]');
             if (badge) {
               e.stopPropagation();
-              showUsedForMenu(badge, kidPaths, { hsOn: sHs, hintTOn: sT, hintPOn: sP });
+              showUsedForMenu(badge, sUse, { hsOn: sHs, hintTOn: sT, hintPOn: sP });
               return;
             }
             if (e.target.closest('.fgh-arrow')) {
@@ -3222,9 +3248,7 @@ function renderFileFilterList(counts) {
               populateSidebar();
               return;
             }
-            const allSel = kidPaths.length > 0 && kidPaths.every(p => g_selFiles.has(p));
-            if (allSel) kidPaths.forEach(p => g_selFiles.delete(p));
-            else        kidPaths.forEach(p => g_selFiles.add(p));
+            _selectFileGroup(kidPaths, e.ctrlKey);
             populateSidebar();
             applyFilter();
           });
@@ -3272,7 +3296,16 @@ function renderFileFilterList(counts) {
             e.stopPropagation();
             showUsedForMenu(badge, [path], { hsOn, hintTOn, hintPOn });
           } else {
-            g_selFiles.has(path) ? g_selFiles.delete(path) : g_selFiles.add(path);
+            // As in Explorer: a click selects only this file (clicking the sole
+            // selected file clears the filter); Ctrl+click adds/removes it.
+            if (e.ctrlKey) {
+              g_selFiles.has(path) ? g_selFiles.delete(path) : g_selFiles.add(path);
+            } else if (g_selFiles.size === 1 && g_selFiles.has(path)) {
+              g_selFiles.clear();
+            } else {
+              g_selFiles.clear();
+              g_selFiles.add(path);
+            }
             populateSidebar(); applyFilter();
           }
         });
@@ -6241,9 +6274,13 @@ const USE_TYPES = [
 
 // state: {hsOn, hintTOn, hintPOn} — the badge markup for a row
 function useBadgeHtml(state) {
+  // state[key]: true, false or 'mixed' (a group where only some files have it)
   const on = USE_TYPES.filter(u => state[u.key]);
-  const letters = on.length ? on.map(u => u.letter).join('') : '–';
-  const names = on.length ? on.map(u => T(u.label)).join(', ') : T('use.none');
+  const letters = on.length
+    ? on.map(u => state[u.key] === 'mixed' ? u.letter.toLowerCase() : u.letter).join('') : '–';
+  const names = on.length
+    ? on.map(u => T(u.label) + (state[u.key] === 'mixed' ? ' (' + T('use.partly') + ')' : '')).join(', ')
+    : T('use.none');
   return `<span class="use-badge${on.length ? '' : ' none'}" data-usebadge="1"` +
          ` title="${escHtml(T('use.title') + ': ' + names)}">${letters}</span>`;
 }
@@ -6256,13 +6293,13 @@ function showUsedForMenu(anchor, paths, state) {
       USE_TYPES.map(u =>
         `<div class="ctx-item ctx-check" data-usetype="${u.type}"` +
         ` title="${escHtml(T(u.label + '.tip'))}">` +
-        `<span class="ctx-tick">${state[u.key] ? '✓' : ''}</span>${escHtml(T(u.label))}</div>`
+        `<span class="ctx-tick">${state[u.key] === 'mixed' ? '–' : state[u.key] ? '✓' : ''}</span>${escHtml(T(u.label))}</div>`
       ).join('');
     menu.querySelectorAll('[data-usetype]').forEach(item => {
       item.addEventListener('click', ev => {
         ev.stopPropagation();
         const u = USE_TYPES.find(x => x.type === item.dataset.usetype);
-        const enable = !state[u.key];
+        const enable = state[u.key] !== true;   // partly on → on for all, like a tri-state checkbox
         state[u.key] = enable;
         paths.forEach(p => {
           const s = g_fileSettingsMap[p] || {};

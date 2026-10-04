@@ -1159,8 +1159,13 @@ _HandleWebMessage(sender, raw) {
             if (type = "hs") {
                 ReloadPhrases(false)
                 _SafeSend(sender,"window.receiveFiles(" BuildFilesJson() ")")
-            } else
+            } else {
+                ; T/P only change what the hint popup offers - but it reads a
+                ; prebuilt index, so without a rebuild the switch only took
+                ; effect after a restart.
+                BuildHintIndex()
                 _SafeSend(sender,"window.receiveFiles(" BuildFilesJson() ")")
+            }
         }
 
     } else if (action = "firstRunSetup") {
@@ -5518,7 +5523,10 @@ ShowHideWv2Win(*) {
         if InStr(StrUpper(g_hkOpenGui), "CAPSLOCK")
             _CapsResetIfOn()
     } else {
-        ; Window open but in background — just bring it to front
+        ; Window open but in background — bring it to front. WinActivate alone
+        ; is often refused by Windows' focus-stealing protection (the window
+        ; just stayed behind); Show() - what MarkWord does - brings it up.
+        Wv2Show()
         try WinActivate("ahk_id " wv2Win.hwnd)
         if InStr(StrUpper(g_hkOpenGui), "CAPSLOCK") {
             _CapsResetIfOn()
@@ -5749,7 +5757,16 @@ DoGlobalInsertStep(*) {
 ; Predicate for HotIf: global hotkeys are suppressed while CapsLock is physically held,
 ; so that CapsLock+modifier combos in other scripts (kbd nav) are never intercepted here.
 _HkCondNoCaps(*) {
-    return !GetKeyState("CapsLock", "P")
+    return !_CapsHeld()
+}
+
+; Is CapsLock held? A remapper can hide it: Sostenuto swallows the CapsLock
+; down and holds right Ctrl instead. If its hook runs ahead of ours, our hook
+; never sees CapsLock at all - only an RCtrl that is logically down although
+; no finger is on the physical RCtrl. Count that as CapsLock too.
+_CapsHeld() {
+    return GetKeyState("CapsLock", "P")
+        || (GetKeyState("RCtrl") && !GetKeyState("RCtrl", "P"))
 }
 
 ; Predicate for HotIf: fires only while CapsLock is physically held.
@@ -5757,7 +5774,7 @@ _HkCondNoCaps(*) {
 ; registering it as compound would cause AHK to hold CapsLock events from other scripts'
 ; hooks, breaking kbd nav's own CapsLock compound hotkeys (CapsLock & j, k, l, …).
 _HkCondCapsPhys(*) {
-    return GetKeyState("CapsLock", "P")
+    return _CapsHeld()
 }
 
 ; Guard used by GUI hotkeys: key passes through (~) but action is suppressed while CapsLock
@@ -5782,7 +5799,8 @@ ApplyHotkeyPair(&stored, newKey, fn) {
         if oldIsCaps {
             oldSuffix := RegExReplace(stored, "i)^.*CapsLock\s*&\s*", "")
             HotIf(_HkCondCapsPhys)
-            try Hotkey(oldSuffix, "Off")
+            try Hotkey("*" oldSuffix, "Off")
+            try Hotkey(oldSuffix, "Off")      ; registered without * before 2026-10-04
             HotIf()
             ; Also try legacy compound-hotkey registrations from earlier sessions
             try Hotkey("~" . stored, "Off")
@@ -5798,9 +5816,11 @@ ApplyHotkeyPair(&stored, newKey, fn) {
             ; Register just the suffix key (e.g. "Space") under _HkCondCapsPhys instead of
             ; a compound hotkey — AHK then never marks CapsLock as a prefix, so kbd nav's
             ; CapsLock & j / k / l / … hotkeys fire without any interference from Expanto.
+            ; Wildcard (*): with CapsLock remapped to a modifier (Sostenuto: RCtrl),
+            ; CapsLock+x arrives as Ctrl+x, which a bare "x" hotkey never matches.
             suffix := RegExReplace(newKey, "i)^.*CapsLock\s*&\s*", "")
             HotIf(_HkCondCapsPhys)
-            try Hotkey(suffix, fn, "On")
+            try Hotkey("*" suffix, fn, "On")
             HotIf()
         } else {
             ; Use HotIf instead of ~ prefix: when CapsLock is held the condition fails and
