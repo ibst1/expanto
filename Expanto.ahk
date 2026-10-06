@@ -5805,14 +5805,33 @@ _CapsSpec(key) {
 _HkCondCapsMods(mods, *) {
     if !_CapsHeld()
         return false
-    held := Map("!", GetKeyState("LAlt", "P") || GetKeyState("RAlt", "P")
-              , "+", GetKeyState("LShift", "P") || GetKeyState("RShift", "P")
-              , "^", GetKeyState("LCtrl", "P")
-              , "#", GetKeyState("LWin", "P") || GetKeyState("RWin", "P"))
+    held := Map("!", _ModPhys("LAlt") || _ModPhys("RAlt")
+              , "+", _ModPhys("LShift") || _ModPhys("RShift")
+              , "^", _ModPhys("LCtrl")
+              , "#", _ModPhys("LWin") || _ModPhys("RWin"))
     for sym, down in held
         if (down != !!InStr(mods, sym))
             return false
     return true
+}
+
+; Is the modifier physically held? GetKeyState(k, "P") alone is not enough for left
+; Alt: Sostenuto's CapsAltIsCtrl swallows it while CapsLock is held, and a key a
+; low-level hook has eaten reaches nobody behind it - not our hook (so "P" stays 0
+; whenever Sostenuto's hook runs ahead of ours, which it arranges on purpose), and
+; not Raw Input either. Sostenuto publishes the swallowed Alt as a window property.
+_ModPhys(name) => GetKeyState(name, "P") || (name = "LAlt" && _SostenutoAltSwallowed())
+
+_SostenutoAltSwallowed() {
+    static hwnd := 0
+    if !(hwnd && DllCall("IsWindow", "Ptr", hwnd)) {
+        prev := DetectHiddenWindows(true)
+        hwnd := WinExist("\Sostenuto.ahk ahk_class AutoHotkey")
+        DetectHiddenWindows(prev)
+        if !hwnd
+            return false
+    }
+    return DllCall("GetProp", "Ptr", hwnd, "Str", "Sostenuto.AltSwallowed", "Ptr") != 0
 }
 
 ApplyHotkeyPair(&stored, newKey, fn) {
