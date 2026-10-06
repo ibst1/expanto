@@ -88,6 +88,7 @@ global g_runApproved     := Map()  ; {run:...} commands confirmed by the user th
 global g_wv2Shown        := true
 global g_prevWinId       := 0    ; hwnd of active window before Expanto was shown
 global g_hkOpenGui       := ""   ; currently registered OpenGui hotkey string
+global g_hkCapsConds := Map()   ; registered CapsLock hotkey string -> its HotIf criterion (see ApplyHotkeyPair)
 global g_hkUndo          := ""   ; currently registered Undo hotkey string
 global g_hkMarkWord      := ""
 global g_markWordActive  := false  ; true while stepping backward with MarkWord hotkey
@@ -5769,14 +5770,6 @@ _CapsHeld() {
         || (GetKeyState("RCtrl") && !GetKeyState("RCtrl", "P"))
 }
 
-; Predicate for HotIf: fires only while CapsLock is physically held.
-; Used to implement "CapsLock & X" without registering CapsLock as a compound prefix —
-; registering it as compound would cause AHK to hold CapsLock events from other scripts'
-; hooks, breaking kbd nav's own CapsLock compound hotkeys (CapsLock & j, k, l, …).
-_HkCondCapsPhys(*) {
-    return _CapsHeld()
-}
-
 ; Guard used by GUI hotkeys: key passes through (~) but action is suppressed while CapsLock
 ; is physically held, so kbd nav's CapsLock+key combos work even when Expanto is active.
 _GuardCaps(fn, p*) {
@@ -5788,23 +5781,52 @@ _WrapHkFn(newKey, fn) {
     return _GuardCaps.Bind(fn)
 }
 
+; CapsLock hotkey → [modifiers, key], or 0 for an ordinary hotkey. Two spellings:
+;   "!CapsLock & x"  - CapsLock itself (also "!CapsLock_x", normalized below)
+;   ">^!x"           - right Ctrl, which Sostenuto turns CapsLock into; its ini tells
+;                      other scripts to write CapsLock+x that way.
+; Only the plain modifier symbols survive (!+^#); the modifiers are checked by
+; _HkCondCapsMods, the key itself is registered bare.
+_CapsSpec(key) {
+    if RegExMatch(key, "i)^([+^!#<>*~$]*)CapsLock\s*&\s*(\S+)$", &m)
+        mods := m[1], base := m[2]
+    else if RegExMatch(key, "^([+^!#<>*~$]*)(.+)$", &m) && InStr(m[1], ">^")
+        mods := StrReplace(m[1], ">^", "", , , 1), base := m[2]
+    else
+        return 0
+    return [RegExReplace(mods, "[^!+^#]"), base]
+}
+
+; HotIf criterion for a CapsLock hotkey: CapsLock held, and exactly the wanted
+; modifiers PHYSICALLY down. Physical, because Sostenuto's CapsAltIsCtrl swallows
+; left Alt while CapsLock is held - CapsLock+Alt+x reaches every other hook as
+; RCtrl+x, so a "!" hotkey never matched. Exact, so CapsLock+x and CapsLock+Alt+x
+; can be told apart. Left Ctrl only: right Ctrl IS CapsLock under Sostenuto.
+_HkCondCapsMods(mods, *) {
+    if !_CapsHeld()
+        return false
+    held := Map("!", GetKeyState("LAlt", "P") || GetKeyState("RAlt", "P")
+              , "+", GetKeyState("LShift", "P") || GetKeyState("RShift", "P")
+              , "^", GetKeyState("LCtrl", "P")
+              , "#", GetKeyState("LWin", "P") || GetKeyState("RWin", "P"))
+    for sym, down in held
+        if (down != !!InStr(mods, sym))
+            return false
+    return true
+}
+
 ApplyHotkeyPair(&stored, newKey, fn) {
     newKey := Trim(newKey)
-    ; Normalize "CapsLock_Space" style (manual entry) → "CapsLock & Space" (AHK combination syntax)
-    if RegExMatch(newKey, "^([^&+^!#<>\s]+)_([^&+^!#<>\s]+)$", &m)
-        newKey := m[1] " & " m[2]
-    isCaps := InStr(StrUpper(newKey), "CAPSLOCK")
+    ; Normalize "CapsLock_Space" style (manual entry) → "CapsLock & Space" (AHK combination syntax).
+    ; Leading modifiers are kept: "!CapsLock_x" → "!CapsLock & x" (CapsLock + Alt + x).
+    if RegExMatch(newKey, "^([+^!#<>]*)([^&+^!#<>\s]+)_([^&+^!#<>\s]+)$", &m)
+        newKey := m[1] m[2] " & " m[3]
     if (stored != "" && stored != newKey) {
-        oldIsCaps := InStr(StrUpper(stored), "CAPSLOCK")
-        if oldIsCaps {
-            oldSuffix := RegExReplace(stored, "i)^.*CapsLock\s*&\s*", "")
-            HotIf(_HkCondCapsPhys)
-            try Hotkey("*" oldSuffix, "Off")
-            try Hotkey(oldSuffix, "Off")      ; registered without * before 2026-10-04
+        if g_hkCapsConds.Has(stored) {
+            HotIf(g_hkCapsConds[stored])
+            try Hotkey("*" _CapsSpec(stored)[2], "Off")
             HotIf()
-            ; Also try legacy compound-hotkey registrations from earlier sessions
-            try Hotkey("~" . stored, "Off")
-            try Hotkey(stored, "Off")
+            g_hkCapsConds.Delete(stored)
         } else {
             HotIf(_HkCondNoCaps)
             try Hotkey(stored, "Off")
@@ -5812,16 +5834,22 @@ ApplyHotkeyPair(&stored, newKey, fn) {
         }
     }
     if (newKey != "") {
-        if isCaps {
-            ; Register just the suffix key (e.g. "Space") under _HkCondCapsPhys instead of
+        if (spec := _CapsSpec(newKey)) {
+            if g_hkCapsConds.Has(newKey) {   ; already live - a second criterion would double it
+                stored := newKey
+                return
+            }
+            ; Register just the bare key (e.g. "Space") under its own criterion instead of
             ; a compound hotkey — AHK then never marks CapsLock as a prefix, so kbd nav's
             ; CapsLock & j / k / l / … hotkeys fire without any interference from Expanto.
             ; Wildcard (*): with CapsLock remapped to a modifier (Sostenuto: RCtrl),
-            ; CapsLock+x arrives as Ctrl+x, which a bare "x" hotkey never matches.
-            suffix := RegExReplace(newKey, "i)^.*CapsLock\s*&\s*", "")
-            HotIf(_HkCondCapsPhys)
-            try Hotkey("*" suffix, fn, "On")
+            ; CapsLock+x arrives as Ctrl+x, which a bare "x" hotkey never matches; the
+            ; criterion does the modifier matching instead.
+            cond := _HkCondCapsMods.Bind(spec[1])
+            HotIf(cond)
+            try Hotkey("*" spec[2], fn, "On")
             HotIf()
+            g_hkCapsConds[newKey] := cond
         } else {
             ; Use HotIf instead of ~ prefix: when CapsLock is held the condition fails and
             ; AHK never intercepts the key at all — the unmodified event reaches kbd nav.
