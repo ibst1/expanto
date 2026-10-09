@@ -3668,6 +3668,14 @@ _InsertLogWrite(line) {
     }
 }
 
+; An apps= entry is compared with the active process name, but people write the
+; product name: "edge" never matched msedge.exe and the phrase silently did nothing.
+_AppAlias(name) {
+    static ALIASES := Map("edge", "msedge", "word", "winword", "teams", "ms-teams"
+                        , "vscode", "code", "vs code", "code")
+    return ALIASES.Has(name) ? ALIASES[name] : name
+}
+
 HsFire(hs, *) {
     global g_lastFired, g_lastSent, g_lastCaretBack, g_stepLabels, g_omniboxDebug, g_dbgPhase
     t0    := A_TickCount
@@ -3707,7 +3715,7 @@ HsFire(hs, *) {
                 if SubStr(e, 1, 6) = "title:"
                     allowed := allowed || InStr(activeTitle, SubStr(e, 7))
                 else
-                    allowed := allowed || (e = activeExe)
+                    allowed := allowed || (_AppAlias(RegExReplace(e, "\.exe$", "")) = activeExe)
             }
             if !allowed
                 return
