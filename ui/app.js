@@ -4471,13 +4471,17 @@ function requestLinePreview() {
     opts = setOpt(opts, 'C', document.getElementById('fOptC')?.checked);
     const raw = val('fPhrase');
     const { alts, altNames } = _collectAltData(shouldTrim);
+    let phrase = shouldTrim ? raw.trim() : raw;
+    // Show what saveNewPhrase will actually write.
+    if (g_newPhraseMode && !document.getElementById('fOptC')?.checked)
+      phrase = _lowerSentenceInitial(phrase);
     postToAhk({
       action:   'previewPhraseLine',
       id:       g_newPhraseMode ? '' : (g_selId || ''),
       options:  opts,
       trigger,
       aliases,
-      phrase:   shouldTrim ? raw.trim() : raw,
+      phrase,
       cat:      val('fCat').trim(),
       tags:     val('fTags').trim(),
       lang:     val('fLang').trim(),
@@ -4621,11 +4625,24 @@ function _renderNewPhraseMetaHint(path, metaFields) {
     fields.map(f => `<span class="meta-badge">{${escHtml(f)}}</span>`).join('');
 }
 
+// "Underarm" → "underarm". Only an ordinary capitalised word: acronyms and mixed
+// case ("IDS7", "LIMS", "McDonald") and one-letter words are left alone.
+function _lowerSentenceInitial(s) {
+  const m = s.match(/^(\P{L}*)(\p{Lu})(\p{Ll}[\p{L}]*)/u);
+  if (!m || /\p{Lu}/u.test(m[3])) return s;
+  return m[1] + m[2].toLowerCase() + s.slice(m[1].length + 1);
+}
+
 function saveNewPhrase(insertAfterSave = false) {
   const shouldTrim = document.getElementById('phraseTrim')?.checked;
   const { trigger, aliases } = _parseTriggerAlias(document.getElementById('fTrigger').value, shouldTrim);
   const rawPhrase  = document.getElementById('fPhrase').value;
-  const phrase     = shouldTrim ? rawPhrase.trim() : rawPhrase;
+  const trimmed    = shouldTrim ? rawPhrase.trim() : rawPhrase;
+  const keepCase   = document.getElementById('fOptC').checked;
+  // A word captured at the start of a sentence arrives capitalised ("Underarm"), but
+  // the phrase belongs in the file in lower case — case-conforming re-capitalises it
+  // whenever the trigger is typed with a capital. C (exact case) keeps it as written.
+  const phrase     = keepCase ? trimmed : _lowerSentenceInitial(trimmed);
   const { alts, altNames } = _collectAltData(shouldTrim);
   const file       = document.getElementById('fNewFile').value;
   if (!trigger || !phrase) { alert(T('alert.triggerPhraseRequired')); return; }
@@ -4650,7 +4667,8 @@ function saveNewPhrase(insertAfterSave = false) {
     customFields: getCustomFieldValues(file),
     _moveSourceId: moveSource || '',
     insertAfterSave: !!insertAfterSave,
-    insertText: (insertAfterSave && shouldTrim && rawPhrase !== phrase && !alts.length) ? rawPhrase : '',
+    // Insert exactly what is in the box now (untrimmed / still capitalised).
+    insertText: (insertAfterSave && rawPhrase !== phrase && !alts.length) ? rawPhrase : '',
     // Post-save AI fill is only the safety net for saves that beat the live
     // suggestion — skip it when the panel already has category + language
     aiAuto: !!(g_aiEnabled && !file.toLowerCase().endsWith('.enc')
