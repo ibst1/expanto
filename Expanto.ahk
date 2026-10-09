@@ -54,7 +54,7 @@ _WmDpiChanged(wParam, lParam, msg, hwnd) {
 }
 
 try
-    TraySetIcon(A_ScriptDir "\app.ico")
+    TraySetIcon(A_ScriptDir "\app.ico", , true)   ; frozen: GlissandoWatch suspends hotkeys
 
 ; CapsLock suppression (SetCapsLockState AlwaysOff) is applied in InitGlobalHotkeys
 ; when the "Läs CapsLock själv" setting is on. Off by default - see the note there.
@@ -201,6 +201,7 @@ InitStepKey()
 InitGlobalHotkeys()
 LoadUsage()
 StartTypedBuffer()
+SetTimer(GlissandoWatch, 100)
 CreateHintPopup()
 LoadPopupHotkeys()
 
@@ -382,7 +383,7 @@ if !g_startMin {
 ; ── Set window icon + taskbar button icon ────────────────────────────────────
 _iconPath := A_ScriptDir "\app.ico"
 if FileExist(_iconPath)
-    TraySetIcon(_iconPath)
+    TraySetIcon(_iconPath, , true)
 ApplyWindowIcon()
 SetWindowAppId(wv2Win.hwnd, "Expanto.Application.1", FileExist(_iconPath) ? _iconPath : "")
 SetTimer(ApplyWindowIcon, -1000)  ; re-apply after 1 s when Chromium has fully settled
@@ -4840,9 +4841,42 @@ HintActiveOK() {
     ; Uppstarten tar >10 s med tusentals fraser och hint-maskineriet är
     ; aktivt långt före fönsterskapandet - error.log 10:50 fångade racen.
     global wv2Win
+    if GlissKeysElsewhere()
+        return false
     if !IsSet(wv2Win)
         return true
     return !WinActive("ahk_id " wv2Win.hwnd)
+}
+
+; Glissando (the BLE keyboard/mouse sharing) holds this named Event while THIS PC's
+; keys go to the other PC. Our hook can sit ahead of Glissando's, so we saw those
+; keys too: a trigger typed on RS for LU fired here, its backspaces and text were
+; forwarded to LU, and LU's own Expanto never saw the end char - "adres " was
+; erased, garbled or expanded on the wrong PC (2026-10-09). The other PC's Expanto
+; owns those keys, so hotstrings, hotkeys and the hint stand down while it is set.
+; No Glissando, no Event: always false. Cached 50 ms, as in Sostenuto.
+GlissKeysElsewhere() {
+    static tick := 0, state := false
+    if (A_TickCount - tick < 50)
+        return state
+    tick := A_TickCount
+    h := DllCall("OpenEventW", "UInt", 0x00100000, "Int", false, "Str", "Glissando.ControllingRemote", "Ptr")
+    if h
+        DllCall("CloseHandle", "Ptr", h)
+    return state := !!h
+}
+
+GlissandoWatch() {
+    static was := false
+    now := GlissKeysElsewhere()
+    if (now = was)
+        return
+    was := now
+    Suspend(now)
+    Hotstring("Reset")
+    if now {
+        try HintHide()
+    }
 }
 
 HintShown() {
