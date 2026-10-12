@@ -2446,7 +2446,7 @@ RebuildAndReload(filepath) {
     ; Disable hotstrings from old data before rebuilding
     for hs in HS_ALL
         if (hs.filepath = filepath)
-            try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
+            _HsRegister(hs, 0)
     RebuildFileSimple(filepath)
     init_hotstrings_file(filepath)
 }
@@ -2456,17 +2456,13 @@ _RebuildFileOnly(filepath) {
     global HS_ALL
     for hs in HS_ALL
         if (hs.filepath = filepath)
-            try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
+            _HsRegister(hs, 0)
     RebuildFileSimple(filepath)
     en := FileHsEnabled(filepath) ? 1 : 0
     for hs in HS_ALL {
         if (hs.filepath != filepath || hs.disabled)
             continue
-        try {
-            Hotstring(":" hs.options ":" hs.short, HsAction(hs), en)
-            for alias in hs.aliases
-                Hotstring(":" hs.options ":" alias, HsAction(hs), en)
-        }
+        _HsRegister(hs, en)
     }
 }
 
@@ -3146,7 +3142,7 @@ _BulkSaveRun(ids, upd) {
     for fp, _ in changedFiles {
         for hs in HS_ALL
             if (hs.filepath = fp)
-                try Hotstring(":" hs.options ":" hs.short, HsAction(hs), 0)
+                _HsRegister(hs, 0)
         RebuildFileSimple(fp)
         init_hotstrings_file(fp)
     }
@@ -3373,12 +3369,7 @@ init_hotstrings() {
     for hs in HS_ALL {
         if hs.disabled
             continue
-        en := FileHsEnabled(hs.filepath) ? 1 : 0
-        try {
-            Hotstring(":" hs.options ":" hs.short, HsAction(hs), en)
-            for alias in hs.aliases
-                Hotstring(":" hs.options ":" alias, HsAction(hs), en)
-        }
+        _HsRegister(hs, FileHsEnabled(hs.filepath) ? 1 : 0)
     }
 }
 
@@ -3391,16 +3382,57 @@ init_hotstrings_file(filepath) {
     for hs in HS_ALL {
         if (hs.filepath != filepath || hs.disabled)
             continue
-        en := FileHsEnabled(hs.filepath) ? 1 : 0
-        try {
-            Hotstring(":" hs.options ":" hs.short, HsAction(hs), en)
-            for alias in hs.aliases
-                Hotstring(":" hs.options ":" alias, HsAction(hs), en)
-        }
+        _HsRegister(hs, FileHsEnabled(hs.filepath) ? 1 : 0)
     }
 }
 
 HsAction(hs) => HsFire.Bind(hs)
+
+; Registrera (en=1/0) en fras trigger + alias. En apps=-begränsad fras läggs under
+; #HotIf-villkor: att kontrollera appen först i HsFire var för sent — AHK hade då
+; redan suddat triggern, så "concl" försvann i alla appar utom Obsidian.
+_HsRegister(hs, en) {
+    crit := _HsAppCriterion(hs)
+    if crit
+        HotIf(crit)
+    try {
+        try Hotstring(":" hs.options ":" hs.short, HsAction(hs), en)
+        for alias in hs.aliases
+            try Hotstring(":" hs.options ":" alias, HsAction(hs), en)
+    } finally {
+        if crit
+            HotIf()
+    }
+}
+
+; AHK skiljer #HotIf-varianter åt på funktionsobjektet, så samma apps-lista måste
+; ge SAMMA objekt varje gång — annars hittar avregistreringen inte varianten.
+_HsAppCriterion(hs) {
+    static cache := Map()
+    if (hs.apps.Length = 0)
+        return ""
+    key := StrLower(ArrJoin(hs.apps, ","))
+    if !cache.Has(key)
+        cache[key] := _HsAppsAllowed.Bind(hs.apps.Clone())
+    return cache[key]
+}
+
+; App restriction: process name OR title: prefix for window title substring
+_HsAppsAllowed(apps, *) {
+    activeExe   := ""
+    activeTitle := ""
+    try activeExe   := StrLower(RegExReplace(WinGetProcessName("A"), "\.exe$", ""))
+    try activeTitle := StrLower(WinGetTitle("A"))
+    for entry in apps {
+        e := StrLower(Trim(entry))
+        if SubStr(e, 1, 6) = "title:" {
+            if InStr(activeTitle, SubStr(e, 7))
+                return true
+        } else if (_AppAlias(RegExReplace(e, "\.exe$", "")) = activeExe)
+            return true
+    }
+    return false
+}
 
 ; Set to true to pop up the focused element's UIA class name on each static
 ; expansion — used to verify URL-bar (omnibox) detection. Leave false in normal use.
@@ -3704,22 +3736,12 @@ HsFire(hs, *) {
         _DbgMark("cig", tStage)
         if (!proceed)
             return
-        ; App restriction: process name OR title: prefix for window title substring
-        if (hs.apps.Length > 0) {
-            activeExe   := ""
-            activeTitle := ""
-            try activeExe   := StrLower(RegExReplace(WinGetProcessName("A"), "\.exe$", ""))
-            try activeTitle := StrLower(WinGetTitle("A"))
-            allowed := false
-            for entry in hs.apps {
-                e := StrLower(Trim(entry))
-                if SubStr(e, 1, 6) = "title:"
-                    allowed := allowed || InStr(activeTitle, SubStr(e, 7))
-                else
-                    allowed := allowed || (_AppAlias(RegExReplace(e, "\.exe$", "")) = activeExe)
-            }
-            if !allowed
-                return
+        ; App restriction is enforced by #HotIf at registration (_HsRegister). This is a
+        ; backstop only — AHK has already erased the trigger here, so put it back.
+        if (hs.apps.Length > 0 && !_HsAppsAllowed(hs.apps)) {
+            SendInput("{Text}" typed)
+            ours := typed
+            return
         }
         ; Alternative phrase texts: let the user pick one (popup only when alts exist)
         if (_HsAlts(hs).Length)
