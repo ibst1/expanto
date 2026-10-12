@@ -38,3 +38,4 @@ $RECYCLE.BIN/
 lib/words/
 lib/words_private/
 error.log
+bulk.log
