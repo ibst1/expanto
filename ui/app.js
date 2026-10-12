@@ -232,6 +232,7 @@ const LANG = {
     'newfile.hiddenTag': 'dold',
     'newfile.noFolder': '(utan mapp)',
     'newfile.empty': 'Inga filer',
+    'newfile.noMatch': q => 'Ingen fil matchar "' + q + '"',
     'newfile.aiAuto': '✨ Fyll i metadata med AI',
     'newfile.aiAuto.tip': 'Tomma fält (kategori, taggar, kommentar, språk) fylls i automatiskt av AI:n efter att frasen sparats.',
     'newfile.aiAuto.enc': 'Krypterade filer skickas aldrig till AI:t.',
@@ -690,6 +691,7 @@ const LANG = {
     'newfile.hiddenTag': 'hidden',
     'newfile.noFolder': '(no folder)',
     'newfile.empty': 'No files',
+    'newfile.noMatch': q => 'No file matches "' + q + '"',
     'newfile.aiAuto': '✨ Fill in metadata with AI',
     'newfile.aiAuto.tip': 'Empty fields (category, tags, comment, language) are filled in by the AI after the phrase is saved.',
     'newfile.aiAuto.enc': 'Encrypted files are never sent to the AI.',
@@ -1355,6 +1357,19 @@ function _isFileHidden(f) {
 // value lives in the hidden <input id="fNewFile"> so the rest of the code keeps reading
 // `#fNewFile`.value as the chosen path.
 let g_fpHighlight = -1;   // keyboard-nav highlight: index into the rendered file rows
+let g_fpQuery     = '';   // type-to-filter text while the menu is open
+
+// Type-to-filter match: label or file name contains the query; 2 = starts with
+// it, 1 = a word in it does, 0.5 = anywhere, 0 = no match.
+function _fpMatch(f, q) {
+  let best = 0;
+  for (const s of [_fileLabel(f.path), f.name || ''].map(x => x.toLowerCase())) {
+    if (s.startsWith(q)) return 2;
+    const i = s.indexOf(q);
+    if (i > 0) best = Math.max(best, /[\p{L}\p{N}]/u.test(s[i - 1]) ? 0.5 : 1);
+  }
+  return best;
+}
 
 function _fileCountMap() {
   const m = {};
@@ -1430,8 +1445,11 @@ function renderFilePickerMenu() {
   const hiddenTotal = g_files.reduce((n, f) => n + (_isFileHidden(f) ? 1 : 0), 0);
 
   // Visible files: non-hidden, or all when revealing, plus the current selection.
-  const shown = _sortTargetFiles(g_files).filter(f =>
-    !_isFileHidden(f) || g_showHiddenInNewFile || f.path === selected);
+  // While filtering by typed text every file is searched, hidden ones included.
+  const q = g_fpQuery.toLowerCase();
+  const shown = _sortTargetFiles(g_files).filter(f => q
+    ? _fpMatch(f, q) > 0
+    : !_isFileHidden(f) || g_showHiddenInNewFile || f.path === selected);
 
   // Group by folder, preserving the folder-then-alpha order from _sortTargetFiles.
   const groups = [], byId = {};
@@ -1448,12 +1466,12 @@ function renderFilePickerMenu() {
   if (!shown.length) {
     const empty = document.createElement('div');
     empty.className = 'fp-empty';
-    empty.textContent = T('newfile.empty');
+    empty.textContent = q ? T('newfile.noMatch', g_fpQuery) : T('newfile.empty');
     menu.appendChild(empty);
   }
 
   for (const grp of groups) {
-    const collapsed = multiFolder && g_collapsedFolders.has(grp.fid);
+    const collapsed = multiFolder && !q && g_collapsedFolders.has(grp.fid);
     if (multiFolder) {
       const hdr = document.createElement('div');
       hdr.className = 'fp-folder';
@@ -1487,7 +1505,7 @@ function renderFilePickerMenu() {
     }
   }
 
-  if (hiddenTotal > 0) {
+  if (hiddenTotal > 0 && !q) {
     const tog = document.createElement('div');
     tog.className = 'fp-toggle-hidden';
     tog.textContent = g_showHiddenInNewFile ? T('newfile.hideHidden') : T('newfile.showHidden', hiddenTotal);
@@ -1520,6 +1538,36 @@ function closeFilePickerMenu() {
   if (menu) menu.classList.add('hidden');
   if (btn)  btn.setAttribute('aria-expanded', 'false');
   g_fpHighlight = -1;
+  if (g_fpQuery) {
+    g_fpQuery = '';
+    setNewFile(document.getElementById('fNewFile')?.value || '', true);   // label back
+  }
+}
+
+// Typed text narrows the open menu; the input shows the query meanwhile and
+// the highlight lands on the best match (name starting with it first).
+function _fpSetQuery(q) {
+  g_fpQuery = q;
+  const btn = document.getElementById('fNewFileBtn');
+  renderFilePickerMenu();
+  if (!q) {
+    setNewFile(document.getElementById('fNewFile')?.value || '', true);
+    const rows = [...document.querySelectorAll('#fNewFileMenu .fp-file')];
+    const sel = document.getElementById('fNewFile')?.value;
+    g_fpHighlight = Math.max(0, rows.findIndex(r => r.dataset.path === sel));
+  } else {
+    if (btn) btn.value = q;
+    const ql = q.toLowerCase();
+    const rows = [...document.querySelectorAll('#fNewFileMenu .fp-file')];
+    let best = 0, bestScore = -1;
+    rows.forEach((r, i) => {
+      const f = g_files.find(x => x.path === r.dataset.path);
+      const sc = f ? _fpMatch(f, ql) : 0;
+      if (sc > bestScore) { bestScore = sc; best = i; }
+    });
+    g_fpHighlight = rows.length ? best : -1;
+  }
+  _fpApplyHighlight();
 }
 
 // Re-sync the button label with the current value; re-render the menu if it's open.
@@ -1659,7 +1707,9 @@ window.receiveAiSuggestion = function(s) {
   if (live) {
     _setAiAutoBusy(false);
     // Stale or out-of-context: user kept typing, closed the panel or left new mode
-    if (s.error || !g_newPhraseMode || (s.seq && s.seq !== _aiLiveSeq)) return;
+    if (!g_newPhraseMode || (s.seq && s.seq !== _aiLiveSeq)) return;
+    // AI unreachable (offline, network error): fall back to a local file guess
+    if (s.error) { _localPickNewFile(); return; }
     const cur = document.getElementById('fNewFile')?.value || '';
     if (s.file && s.file !== cur && g_newFileBy !== 'user' && g_files.some(f => f.path === s.file)) {
       g_newFileBy = 'ai';
@@ -2448,14 +2498,21 @@ function bindUI() {
     fpBtn.addEventListener('keydown', e => {
       const menu = document.getElementById('fNewFileMenu');
       const open = menu && !menu.classList.contains('hidden');
+      // A printable character filters the list (space too, once a query is started)
+      const typed = e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
+        && (e.key !== ' ' || g_fpQuery);
       if (!open) {
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFilePickerMenu(); }
+        else if (typed) { e.preventDefault(); openFilePickerMenu(); _fpSetQuery(e.key); }
         return;
       }
-      if      (e.key === 'Escape')                  { e.preventDefault(); closeFilePickerMenu(); document.getElementById('fTrigger')?.focus(); }
+      if      (e.key === 'Escape' && g_fpQuery)     { e.preventDefault(); _fpSetQuery(''); }
+      else if (e.key === 'Escape')                  { e.preventDefault(); closeFilePickerMenu(); document.getElementById('fTrigger')?.focus(); }
       else if (e.key === 'ArrowDown')               { e.preventDefault(); _fpMoveHighlight(1); }
       else if (e.key === 'ArrowUp')                 { e.preventDefault(); _fpMoveHighlight(-1); }
-      else if (e.key === 'Enter' || e.key === ' ')  { e.preventDefault(); _fpChooseHighlight(); }
+      else if (e.key === 'Enter' || (e.key === ' ' && !g_fpQuery)) { e.preventDefault(); _fpChooseHighlight(); }
+      else if (e.key === 'Backspace' && g_fpQuery)  { e.preventDefault(); _fpSetQuery(g_fpQuery.slice(0, -1)); }
+      else if (typed)                               { e.preventDefault(); _fpSetQuery(g_fpQuery + e.key); }
     });
   }
   // Keep mousedown inside the menu from moving focus off the input — otherwise the input's
@@ -4710,7 +4767,7 @@ function _aiLiveFire() {
   if (!g_newPhraseMode || !g_aiEnabled) return;
   const cb = document.getElementById('fAiAuto');
   if (!cb || !cb.checked || cb.disabled) return;
-  const byAi = g_newFileBy === 'ai';
+  const byAi = g_newFileBy === 'ai' || g_newFileBy === 'local';
   const file = byAi ? '' : (document.getElementById('fNewFile')?.value || '');
   if (file.toLowerCase().endsWith('.enc')) return;
   const trigger = document.getElementById('fTrigger')?.value.trim() || '';
@@ -4719,10 +4776,62 @@ function _aiLiveFire() {
   const key = trigger + '\u0001' + phrase;
   if (key === _aiLiveLastSent) return;   // nothing new since last call
   _aiLiveLastSent = key;
+  // Offline (e.g. airplane mode): the API call would only fail — guess locally
+  if (navigator.onLine === false) { _localPickNewFile(); return; }
   _aiLiveSeq++;
   _setAiAutoBusy(true);
   postToAhk({ action: 'aiSuggest', id: '', trigger, phrase, file, live: 1, seq: _aiLiveSeq,
               pickFile: g_newFileBy !== 'user' ? 1 : 0 });
+}
+
+// Local stand-in for the AI's file choice when the API can't be reached: score
+// each pickable file by how well its phrases match the new one — shared words
+// (rarer words count more, file size is damped so big files don't always win)
+// plus triggers with the same leading prefix. Leaves the preselection alone
+// when nothing matches, and never overrides a file the user picked.
+function _localPickNewFile() {
+  if (!g_newPhraseMode || g_newFileBy === 'user' || g_newFileBy === 'ai') return;
+  const trigger = document.getElementById('fTrigger')?.value.trim() || '';
+  const phrase  = document.getElementById('fPhrase')?.value.trim() || '';
+  const words = s => (s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+  const query = new Set(words(trigger + ' ' + phrase));
+  const pre = (trigger.match(/^[^\p{L}\p{N}]+/u) || [''])[0] || trigger.slice(0, 2).toLowerCase();
+  if (!query.size && !pre) return;
+
+  const cur = document.getElementById('fNewFile')?.value || '';
+  const pickable = new Set(g_files
+    .filter(f => !_isFileHidden(f) || g_showHiddenInNewFile || f.path === cur)
+    .map(f => f.path));
+  const perFile = new Map();   // path → { n, wc: Map(word → count), pre }
+  const df = new Map();        // word → number of files containing it
+  for (const p of g_phrases) {
+    if (!pickable.has(p.file)) continue;
+    let e = perFile.get(p.file);
+    if (!e) perFile.set(p.file, e = { n: 0, wc: new Map(), pre: 0 });
+    e.n++;
+    for (const w of words([p.trigger, p.phrase, p.cat, p.tags].join(' ')))
+      if (query.has(w)) e.wc.set(w, (e.wc.get(w) || 0) + 1);
+    if (pre && (p.trigger || '').toLowerCase().startsWith(pre)) e.pre++;
+  }
+  for (const e of perFile.values())
+    for (const w of e.wc.keys()) df.set(w, (df.get(w) || 0) + 1);
+
+  const nFiles = perFile.size || 1;
+  let best = '', bestScore = 0;
+  for (const [path, e] of perFile) {
+    let s = 0;
+    for (const [w, c] of e.wc) s += Math.log(1 + c) * Math.log(1 + nFiles / df.get(w));
+    s /= Math.sqrt(Math.log(2 + e.n));
+    if (pre) s += 1.5 * e.pre / e.n;   // share of the file's triggers with this prefix
+    if (s > bestScore) { bestScore = s; best = path; }
+  }
+  if (!best || bestScore < 0.5 || best === cur) return;
+  g_newFileBy = 'local';
+  setNewFile(best, true);
+  const cat = document.getElementById('fCat');
+  const keep = cat && cat.dataset.aiSrc === 'user' ? cat.value : null;
+  _applyFileDefaults(best);
+  if (keep !== null) cat.value = keep;
 }
 
 function isEncFile(f) {
